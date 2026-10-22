@@ -109,6 +109,8 @@ public sealed class FolderScanner
                 ProductionNumber = info.ProductionId
                     ?? string.Join(", ", info.Parts.Select(p => p.Number).Where(n => n.Length > 0).Distinct()),
                 Parts = info.Parts,
+                UsedArea = info.UsedArea,
+                ContentHash = info.LblHash,
             };
         }
         catch (IOException)

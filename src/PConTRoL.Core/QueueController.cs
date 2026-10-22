@@ -3,6 +3,7 @@ using PConTRoL.Core.Layout;
 using PConTRoL.Core.Logging;
 using PConTRoL.Core.Ordering;
 using PConTRoL.Core.Scanning;
+using PConTRoL.Core.Statistics;
 
 namespace PConTRoL.Core;
 
@@ -49,11 +50,14 @@ public sealed class QueueController
     private readonly MachineSortOrder _sortOrder;
     private readonly FolderScanner _scanner;
     private readonly LayoutStore _store;
+    private readonly StatisticsStore? _statistics;
+    private readonly FinishedJobTracker _finished = new();
     private LayoutDocument? _doc;
 
     public QueueController(AppPaths paths, ActionLog log, RetryPolicy? retry = null, Func<DateTime>? utcNow = null,
-        MachineSortOrder sortOrder = MachineConfig.SortOrder)
+        MachineSortOrder sortOrder = MachineConfig.SortOrder, StatisticsStore? statistics = null)
     {
+        _statistics = statistics;
         _paths = paths;
         _log = log;
         _retry = retry ?? RetryPolicy.Default;
@@ -127,10 +131,32 @@ public sealed class QueueController
                 $"Hauptordner nicht gefunden oder ohne {AppPaths.InputFolderName}/{AppPaths.NestResultFolderName}: {_paths.Root}");
 
         var scan = _scanner.Scan();
+        RecordFinished(scan);
         if (_doc == null || _store.HasChangedOnDisk())
             _doc = _store.Load();
         LayoutOps.Reconcile(_doc, scan);
         return new QueueSnapshot { Scan = scan, Layout = _doc.Clone(), Time = DateTime.Now };
+    }
+
+    /// <summary>Von der Maschine fertig bearbeitete Platten in die Statistik schreiben. Fehler stören den Betrieb nie.</summary>
+    private void RecordFinished(ScanResult scan)
+    {
+        var finished = _finished.Update(scan);
+        if (_statistics == null) return;
+        foreach (var job in finished)
+        {
+            var record = BoardRecord.FromJob(job, BoardRecord.SourceMachine, _utcNow());
+            if (record == null) continue;
+            try
+            {
+                if (_statistics.Add(record))
+                    _log.Write("FERTIG", job.Key, $"Statistik: {record.Material}, Ausnutzung {record.Utilization:0.0} %");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.Write("FEHLER", job.Key, "Statistik nicht gespeichert: " + ex.Message);
+            }
+        }
     }
 
     private OperationResult Guard(Func<OperationResult> action)

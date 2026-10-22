@@ -13,7 +13,7 @@
         <CommandBinding Command="{x:Static views:Commands.Refresh}" Executed="OnRefreshCommand" />
     </Window.CommandBindings>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="250" />
@@ -30,15 +30,12 @@
                     <Button Content="⟳  Aktualisieren" Click="OnRefreshClick" ToolTip="Ordner sofort neu einlesen (F5)" />
                     <Button Content="⛶  Vollbild" Click="OnFullScreenClick" ToolTip="Vollbild an/aus (F11)" />
                     <Button Content="▣  Pop-up" Click="OnPopupClick" ToolTip="Kleines Fenster mit dem laufenden und den nächsten Aufträgen" />
+                    <Button Content="◔  Statistik" Click="OnStatisticsClick" ToolTip="Plattenausnutzung und Verschnitt je Material" />
                     <Button Content="⚙  Einstellungen" Click="OnSettingsClick" />
                 </StackPanel>
                 <TextBlock Text="PConTRoL" FontSize="24" FontWeight="Bold" Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
                 <TextBlock x:Name="VersionText" FontSize="14" Foreground="{StaticResource FgDim}" VerticalAlignment="Bottom"
                            Margin="8,0,0,4" ToolTip="Installierte Programmversion" />
-                <Border x:Name="TestBadge" Background="{StaticResource TestBg}" CornerRadius="4" Padding="10,3" Margin="16,0,0,0"
-                        VerticalAlignment="Center" Visibility="Collapsed">
-                    <TextBlock Text="TESTMODUS" FontWeight="Bold" FontSize="15" Foreground="Black" />
-                </Border>
                 <TextBlock x:Name="FolderText" FontSize="14" Foreground="{StaticResource FgDim}" VerticalAlignment="Center"
                            Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
             </DockPanel>

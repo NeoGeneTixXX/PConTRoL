@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace PConTRoL.App.Services;
 
@@ -15,8 +16,26 @@ public sealed class ColumnState
 public sealed class UserSettings
 {
     public string MainFolder { get; set; } = "";
-    public bool TestMode { get; set; }
-    public string TestFolder { get; set; } = "";
+
+    /// <summary>Zuletzt gewählter Archivordner für den einmaligen Statistik-Import.</summary>
+    public string ArchiveFolder { get; set; } = "";
+
+    /// <summary>Vergrößerung der Programmoberfläche (1.0 = 100 %).</summary>
+    public double MainScale { get; set; } = 1.0;
+
+    /// <summary>Vergrößerung des Pop-ups (1.0 = 100 %).</summary>
+    public double PopupScale { get; set; } = 1.0;
+
+    public const double MinScale = 0.75;
+    public const double MaxScale = 2.0;
+    public static double ClampScale(double v) => double.IsFinite(v) ? Math.Clamp(v, MinScale, MaxScale) : 1.0;
+
+    // Testmodus gibt es seit 1.2.0 nicht mehr. Nur noch lesen, um alte Einstellungen zu übernehmen.
+    [JsonPropertyName("TestMode"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool LegacyTestMode { get; set; }
+
+    [JsonPropertyName("TestFolder"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyTestFolder { get; set; }
 
     public string PopupBackground { get; set; } = "#FF262626";
     public string PopupText { get; set; } = "#FFF0F0F0";
@@ -35,8 +54,6 @@ public sealed class UserSettings
     public double WindowHeight { get; set; } = 950;
     public bool WindowMaximized { get; set; } = true;
     public double DetailsHeight { get; set; } = 230;
-
-    public string EffectiveRoot => TestMode ? TestFolder : MainFolder;
 
     public UserSettings Clone() =>
         JsonSerializer.Deserialize<UserSettings>(JsonSerializer.Serialize(this, SettingsStore.Options), SettingsStore.Options)!;
@@ -61,13 +78,30 @@ public static class SettingsStore
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath), Options) ?? new UserSettings();
+                return Migrate(JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath), Options) ?? new UserSettings());
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
             ErrorLog.Write("Einstellungen konnten nicht gelesen werden", ex);
         }
         return new UserSettings();
+    }
+
+    /// <summary>
+    /// Alte Einstellungen übernehmen: Wer bisher nur im Testmodus gearbeitet hat (kein Hauptordner gesetzt),
+    /// arbeitet ab jetzt mit dem Testordner als Hauptordner weiter.
+    /// </summary>
+    private static UserSettings Migrate(UserSettings s)
+    {
+        var legacy = s.LegacyTestMode || s.LegacyTestFolder != null;
+        if (s.MainFolder.Length == 0 && s.LegacyTestMode && !string.IsNullOrWhiteSpace(s.LegacyTestFolder))
+            s.MainFolder = s.LegacyTestFolder;
+        s.LegacyTestMode = false;
+        s.LegacyTestFolder = null;
+        s.MainScale = UserSettings.ClampScale(s.MainScale);
+        s.PopupScale = UserSettings.ClampScale(s.PopupScale);
+        if (legacy) Save(s); // sofort festschreiben, nicht erst beim Beenden
+        return s;
     }
 
     public static void Save(UserSettings settings)

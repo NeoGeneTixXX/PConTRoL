@@ -7,13 +7,15 @@ public enum Side
     Machine,
 }
 
-/// <summary>Ein Teil auf einer Platte (aus der .lbl).</summary>
+/// <summary>Ein Teil auf einer Platte (aus der .lbl). DimX/DimY = Maße des Teils in mm (für die Fläche).</summary>
 public sealed record PartInfo(
     string RdNumber,
     string Description,
     string Article,
     string Size,
-    string Number);
+    string Number,
+    double? DimX = null,
+    double? DimY = null);
 
 /// <summary>Ein Auftrag = eine Platte = eine .hop-Datei (mit .lbl).</summary>
 public sealed class JobInfo
@@ -39,6 +41,12 @@ public sealed class JobInfo
     public double? Efficiency { get; init; }
     public int? Priority { get; init; }
     public string ProductionNumber { get; init; } = "";
+
+    /// <summary>Summe der Teileflächen in mm² (null, wenn nicht aus der .lbl ableitbar).</summary>
+    public double? UsedArea { get; init; }
+
+    /// <summary>SHA-256 der .lbl – erkennt dieselbe Platte wieder (z. B. im Archiv).</summary>
+    public string? ContentHash { get; init; }
     public IReadOnlyList<PartInfo> Parts { get; init; } = [];
 
     public string BoardText => BoardId is { } id

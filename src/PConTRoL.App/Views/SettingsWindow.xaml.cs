@@ -1,11 +1,11 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
 using PConTRoL.App.Services;
 using PConTRoL.Core;
+using PConTRoL.Core.Statistics;
 
 namespace PConTRoL.App.Views;
 
@@ -14,20 +14,25 @@ public partial class SettingsWindow : Window
     private readonly UserSettings _original;
     private readonly UserSettings _edit;
     private readonly PopupWindow _popup;
+    private readonly Action<double?> _previewMainScale;
     private readonly bool _popupWasVisible;
     private bool _loading = true;
+    private bool _importing;
 
-    public SettingsWindow(UserSettings current, PopupWindow popup)
+    /// <param name="previewMainScale">Vorschau der Größe im Hauptfenster; null = gespeicherten Wert wiederherstellen.</param>
+    public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale)
     {
         InitializeComponent();
         _original = current.Clone();
         _edit = current.Clone();
         _popup = popup;
+        _previewMainScale = previewMainScale;
         _popupWasVisible = popup.IsVisible;
 
         MainFolderBox.Text = _edit.MainFolder;
-        TestModeBox.IsChecked = _edit.TestMode;
-        TestFolderBox.Text = _edit.TestFolder;
+        ArchiveFolderBox.Text = _edit.ArchiveFolder;
+        MainScaleSlider.Value = Math.Round(_edit.MainScale * 100);
+        PopupScaleSlider.Value = Math.Round(_edit.PopupScale * 100);
         OpacitySlider.Value = Math.Round(_edit.PopupOpacity * 100);
         TopmostBox.IsChecked = _edit.PopupTopmost;
         AutostartBox.IsChecked = _edit.StartWithWindows;
@@ -46,7 +51,11 @@ public partial class SettingsWindow : Window
         };
         Closed += (_, _) =>
         {
-            if (DialogResult != true) _popup.ApplyLook(_original);
+            if (DialogResult != true)
+            {
+                _popup.ApplyLook(_original);
+                _previewMainScale(null);
+            }
             if (!_popupWasVisible) _popup.Hide();
         };
     }
@@ -59,8 +68,13 @@ public partial class SettingsWindow : Window
         if (_loading) return;
         _edit.PopupOpacity = OpacitySlider.Value / 100.0;
         _edit.PopupTopmost = TopmostBox.IsChecked == true;
+        _edit.MainScale = MainScaleSlider.Value / 100.0;
+        _edit.PopupScale = PopupScaleSlider.Value / 100.0;
         OpacityText.Text = $"{OpacitySlider.Value:0} %";
+        MainScaleText.Text = $"{MainScaleSlider.Value:0} %";
+        PopupScaleText.Text = $"{PopupScaleSlider.Value:0} %";
         _popup.ApplyLook(_edit);
+        _previewMainScale(_edit.MainScale);
     }
 
     private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -68,6 +82,8 @@ public partial class SettingsWindow : Window
         if (OpacityText != null) OpacityText.Text = $"{OpacitySlider.Value:0} %";
         Preview();
     }
+
+    private void OnScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e) => Preview();
 
     private void OnLookChanged(object sender, RoutedEventArgs e) => Preview();
 
@@ -118,7 +134,7 @@ public partial class SettingsWindow : Window
 
     private void OnBrowseMain(object sender, RoutedEventArgs e) => Browse(MainFolderBox, "Hauptordner wählen (enthält _Input und _NestResult)");
 
-    private void OnBrowseTest(object sender, RoutedEventArgs e) => Browse(TestFolderBox, "Testordner wählen");
+    private void OnBrowseArchive(object sender, RoutedEventArgs e) => Browse(ArchiveFolderBox, "Archivordner mit bereits bearbeiteten Platten wählen");
 
     private void Browse(TextBox box, string title)
     {
@@ -127,93 +143,62 @@ public partial class SettingsWindow : Window
         if (dlg.ShowDialog(this) == true) box.Text = dlg.FolderName;
     }
 
-    private async void OnCreateTestCopy(object sender, RoutedEventArgs e)
+    /// <summary>Liest den Archivordner einmalig in die Statistik (im Hauptordner) ein.</summary>
+    private async void OnImportArchive(object sender, RoutedEventArgs e)
     {
-        var source = MainFolderBox.Text.Trim();
-        var target = TestFolderBox.Text.Trim();
-        if (!new AppPaths(source).IsValid)
+        if (_importing) return;
+        var archive = ArchiveFolderBox.Text.Trim();
+        var main = MainFolderBox.Text.Trim();
+        if (!Directory.Exists(archive))
         {
-            Warn("Im Hauptordner fehlen _Input oder _NestResult.");
+            Warn("Bitte einen vorhandenen Archivordner wählen.");
             return;
         }
-        if (target.Length == 0)
+        if (main.Length == 0 || !new AppPaths(main).IsValid)
         {
-            Warn("Bitte zuerst einen Testordner wählen.");
-            return;
-        }
-
-        var src = Path.GetFullPath(source).TrimEnd('\\') + "\\";
-        var dst = Path.GetFullPath(target).TrimEnd('\\') + "\\";
-        if (dst.StartsWith(src, StringComparison.OrdinalIgnoreCase) || src.StartsWith(dst, StringComparison.OrdinalIgnoreCase))
-        {
-            Warn("Testordner und Hauptordner dürfen nicht ineinander liegen.");
+            Warn("Bitte zuerst einen gültigen Hauptordner wählen – die Statistik wird dort im Ordner _PConTRoL gespeichert.");
             return;
         }
 
-        if (MessageBox.Show(this,
-                $"Alle Dateien aus\n{source}\\_Input und _NestResult\nwerden nach\n{target}\nkopiert.\n\nVorhandene Dateien im Testordner werden NICHT überschrieben. Im Hauptordner wird nichts verändert.",
-                "Testkopie anlegen", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
-            return;
-
-        IsEnabled = false;
-        Cursor = Cursors.Wait;
+        _importing = true;
+        ImportButton.IsEnabled = false;
+        ImportStatus.Text = "Suche Dateien …";
+        var progress = new Progress<(int Done, int Total)>(p => ImportStatus.Text = $"Lese {p.Done} von {p.Total} …");
         try
         {
-            var (copied, skipped) = await Task.Run(() =>
-            {
-                var c = 0;
-                var s = 0;
-                foreach (var folder in new[] { AppPaths.InputFolderName, AppPaths.NestResultFolderName })
-                {
-                    var from = Path.Combine(source, folder);
-                    foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
-                    {
-                        var to = Path.Combine(target, folder, Path.GetRelativePath(from, file));
-                        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                        if (File.Exists(to)) { s++; continue; }
-                        File.Copy(file, to, overwrite: false);
-                        File.SetLastWriteTimeUtc(to, File.GetLastWriteTimeUtc(file));
-                        c++;
-                    }
-                    Directory.CreateDirectory(Path.Combine(target, folder));
-                }
-                return (c, s);
-            });
-            MessageBox.Show(this, $"{copied} Dateien kopiert, {skipped} schon vorhanden.", "Testkopie", MessageBoxButton.OK, MessageBoxImage.Information);
-            TestModeBox.IsChecked = true;
+            var store = new StatisticsStore(new AppPaths(main).StatisticsFile);
+            var r = await Task.Run(() => ArchiveImporter.Import(archive, store, progress));
+            ImportStatus.Text = r.Files == 0
+                ? "Keine .lbl-Dateien gefunden."
+                : $"{r.Added} Platten neu übernommen, {r.Known} schon vorhanden" + (r.Invalid > 0 ? $", {r.Invalid} nicht auswertbar." : ".");
+            _edit.ArchiveFolder = archive;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Warn("Kopieren fehlgeschlagen: " + ex.Message);
+            ImportStatus.Text = "";
+            Warn("Einlesen fehlgeschlagen: " + ex.Message);
         }
         finally
         {
-            IsEnabled = true;
-            Cursor = null;
+            _importing = false;
+            ImportButton.IsEnabled = true;
         }
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        if (_importing)
+        {
+            Warn("Bitte warten, bis das Einlesen des Archivs fertig ist.");
+            return;
+        }
+
         _edit.MainFolder = MainFolderBox.Text.Trim();
-        _edit.TestMode = TestModeBox.IsChecked == true;
-        _edit.TestFolder = TestFolderBox.Text.Trim();
+        _edit.ArchiveFolder = ArchiveFolderBox.Text.Trim();
         _edit.StartWithWindows = AutostartBox.IsChecked == true;
         Preview();
 
-        if (_edit.TestMode && _edit.TestFolder.Length == 0)
-        {
-            Warn("Testmodus ist an, aber es ist kein Testordner gewählt.");
-            return;
-        }
-        if (_edit.TestMode && string.Equals(Path.GetFullPath(_edit.TestFolder).TrimEnd('\\'),
-                Path.GetFullPath(_edit.MainFolder.Length > 0 ? _edit.MainFolder : ".").TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-        {
-            Warn("Der Testordner darf nicht der Hauptordner sein.");
-            return;
-        }
-
-        var root = _edit.EffectiveRoot;
+        var root = _edit.MainFolder;
         if (root.Length > 0 && !new AppPaths(root).IsValid &&
             MessageBox.Show(this, $"In „{root}“ fehlen _Input oder _NestResult.\nTrotzdem speichern?", "Ordner prüfen",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)

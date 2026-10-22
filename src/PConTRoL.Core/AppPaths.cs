@@ -24,6 +24,9 @@ public sealed class AppPaths
     public string LayoutFile => Path.Combine(Shared, "reihenfolge.json");
     public string LogFolder => Shared;
 
+    /// <summary>Statistik aller fertigen Platten (eine JSON-Zeile pro Platte, für alle Rechner gemeinsam).</summary>
+    public string StatisticsFile => Path.Combine(Shared, "statistik.jsonl");
+
     public bool IsValid => Directory.Exists(Input) && Directory.Exists(NestResult);
 
     public string NestJobFolder(string nestJob) => Path.Combine(NestResult, nestJob);

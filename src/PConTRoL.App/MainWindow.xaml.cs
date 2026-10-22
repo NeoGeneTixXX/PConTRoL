@@ -13,6 +13,7 @@ using PConTRoL.App.Views;
 using PConTRoL.Core;
 using PConTRoL.Core.Layout;
 using PConTRoL.Core.Logging;
+using PConTRoL.Core.Statistics;
 
 namespace PConTRoL.App;
 
@@ -26,6 +27,7 @@ public partial class MainWindow : Window, IJobListHost
     private readonly List<FileSystemWatcher> _watchers = [];
     private UserSettings _settings;
     private QueueController? _controller;
+    private StatisticsStore? _statistics;
     private QueueSnapshot? _snapshot;
     private string? _error;
     private bool _refreshing;
@@ -62,6 +64,7 @@ public partial class MainWindow : Window, IJobListHost
         };
 
         VersionText.Text = "v" + UpdateService.CurrentVersion;
+        ApplyScale();
 
         ApplyRoot();
         _timer.Start();
@@ -105,10 +108,8 @@ public partial class MainWindow : Window, IJobListHost
         _watchers.Clear();
         _snapshot = null;
 
-        var root = _settings.EffectiveRoot;
-        TestBadge.Visibility = _settings.TestMode ? Visibility.Visible : Visibility.Collapsed;
+        var root = _settings.MainFolder;
         FolderText.Text = root.Length > 0 ? root : "Kein Hauptordner gewählt – bitte Einstellungen öffnen";
-        Title = _settings.TestMode ? "PConTRoL – TESTMODUS" : "PConTRoL – Produktionsreihenfolge";
 
         StockList.ApplyColumnStates(_settings.Columns.GetValueOrDefault("Stock"));
         MachineList.ApplyColumnStates(_settings.Columns.GetValueOrDefault("Machine"));
@@ -116,12 +117,14 @@ public partial class MainWindow : Window, IJobListHost
         if (root.Length == 0)
         {
             _controller = null;
+            _statistics = null;
             Render();
             return;
         }
 
         var paths = new AppPaths(root);
-        _controller = new QueueController(paths, new ActionLog(paths.LogFolder));
+        _statistics = new StatisticsStore(paths.StatisticsFile);
+        _controller = new QueueController(paths, new ActionLog(paths.LogFolder), statistics: _statistics);
         StartWatchers(paths);
         _ = RefreshNow();
     }
@@ -597,19 +600,37 @@ public partial class MainWindow : Window, IJobListHost
     public void OpenSettings()
     {
         CaptureLayout();
-        var dlg = new SettingsWindow(_settings, Popup);
+        var dlg = new SettingsWindow(_settings, Popup, ApplyScale);
         if (IsVisible) dlg.Owner = this;
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         if (dlg.ShowDialog() != true) return;
 
-        var rootChanged = !string.Equals(dlg.Result.EffectiveRoot, _settings.EffectiveRoot, StringComparison.OrdinalIgnoreCase)
-                          || dlg.Result.TestMode != _settings.TestMode;
+        var rootChanged = !string.Equals(dlg.Result.MainFolder, _settings.MainFolder, StringComparison.OrdinalIgnoreCase);
         var autostartChanged = dlg.Result.StartWithWindows != _settings.StartWithWindows;
         _settings = dlg.Result;
         if (autostartChanged) Autostart.Apply(_settings.StartWithWindows);
         SettingsStore.Save(_settings);
         Popup.ApplyLook(_settings);
+        ApplyScale();
         if (rootChanged) ApplyRoot();
+    }
+
+    /// <summary>Vergrößert/verkleinert die ganze Oberfläche (Einstellungen → Größe).</summary>
+    public void ApplyScale(double? preview = null)
+    {
+        var scale = UserSettings.ClampScale(preview ?? _settings.MainScale);
+        RootGrid.LayoutTransform = Math.Abs(scale - 1) < 0.001 ? Transform.Identity : new ScaleTransform(scale, scale);
+    }
+
+    private void OnStatisticsClick(object sender, RoutedEventArgs e)
+    {
+        if (_statistics == null)
+        {
+            MessageBox.Show(this, "Bitte zuerst in den Einstellungen den Hauptordner wählen. Die Statistik liegt dort im Ordner _PConTRoL.",
+                "Statistik", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        new StatisticsWindow(_statistics, _settings.MainScale) { Owner = this }.Show();
     }
 
     public void ShowFromTray()

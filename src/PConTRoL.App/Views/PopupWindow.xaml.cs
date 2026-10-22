@@ -43,7 +43,13 @@ public partial class PopupWindow : Window
         RunningLabel.Foreground = accent;
         NextLabel.Foreground = accent;
         foreach (var b in Header.Children.OfType<Button>()) b.Foreground = fg;
+
+        var scale = UserSettings.ClampScale(s.PopupScale);
+        Root.LayoutTransform = Math.Abs(scale - 1) < 0.001 ? Transform.Identity : new ScaleTransform(scale, scale);
+        Width = BaseWidth * scale;
     }
+
+    private const double BaseWidth = 480;
 
     public void ShowAtCorner()
     {

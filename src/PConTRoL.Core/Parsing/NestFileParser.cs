@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -20,6 +21,19 @@ public sealed class NestFileInfo
     public int? Priority { get; set; }
     public string? ProductionId { get; set; }
     public List<PartInfo> Parts { get; } = [];
+
+    /// <summary>SHA-256 (hex) des Inhalts der .lbl, falls vorhanden.</summary>
+    public string? LblHash { get; set; }
+
+    /// <summary>
+    /// Genutzte Fläche in mm² = Summe DimX × DimY aller [Part_n]. Entspricht BetterNests "Efficiency".
+    /// Null, wenn es keine Teile gibt oder einem Teil die Maße fehlen. (Count in [Part_n] ist ein
+    /// laufender Zähler, keine Stückzahl – jeder Abschnitt ist genau ein Teil.)
+    /// </summary>
+    public double? UsedArea =>
+        Parts.Count > 0 && Parts.All(p => p.DimX is > 0 && p.DimY is > 0)
+            ? Parts.Sum(p => p.DimX!.Value * p.DimY!.Value)
+            : null;
 }
 
 /// <summary>
@@ -37,7 +51,11 @@ public static class NestFileParser
     {
         var info = new NestFileInfo();
         if (lblPath != null && File.Exists(lblPath))
-            ApplyLbl(info, ReadAllTextShared(lblPath));
+        {
+            var bytes = ReadAllBytesShared(lblPath);
+            info.LblHash = HashOf(bytes);
+            ApplyLbl(info, Decode(bytes));
+        }
         if (File.Exists(hopPath))
             ApplyHopHeader(info, ReadHopHeader(hopPath));
         return info;
@@ -80,7 +98,9 @@ public static class NestFileParser
                 Get(values, "FreeText3") ?? "",
                 Get(values, "FreeText2") ?? "",
                 size,
-                Get(values, "FreeText7") ?? ""));
+                Get(values, "FreeText7") ?? "",
+                ParseDouble(Get(values, "DimX")),
+                ParseDouble(Get(values, "DimY"))));
         }
     }
 
@@ -117,13 +137,17 @@ public static class NestFileParser
         return lines;
     }
 
-    public static string ReadAllTextShared(string path)
+    public static string ReadAllTextShared(string path) => Decode(ReadAllBytesShared(path));
+
+    public static byte[] ReadAllBytesShared(string path)
     {
         using var stream = OpenShared(path);
         using var ms = new MemoryStream();
         stream.CopyTo(ms);
-        return Decode(ms.ToArray());
+        return ms.ToArray();
     }
+
+    public static string HashOf(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
     /// <summary>UTF-8 (mit/ohne BOM), UTF-16 mit BOM, sonst Windows-1252.</summary>
     public static string Decode(byte[] bytes)

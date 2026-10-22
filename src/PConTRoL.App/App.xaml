@@ -17,7 +17,9 @@
             <SolidColorBrush x:Key="Accent" Color="#F2C230" />
             <SolidColorBrush x:Key="AccentDim" Color="#6E5A1C" />
             <SolidColorBrush x:Key="Danger" Color="#E05A4F" />
-            <SolidColorBrush x:Key="TestBg" Color="#D9822B" />
+            <!-- Statistik: Ausnutzung grün (wie im App-Symbol), Verschnitt rot -->
+            <SolidColorBrush x:Key="ChartUsed" Color="#4CAF50" />
+            <SolidColorBrush x:Key="ChartWaste" Color="#E05A4F" />
             <SolidColorBrush x:Key="BorderBrush" Color="#555555" />
 
             <Style TargetType="ToolTip">

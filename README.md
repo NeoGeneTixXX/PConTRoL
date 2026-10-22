@@ -41,8 +41,8 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
 
 PConTRoL kann auf mehreren Rechnern laufen:
 
-- **Pro Benutzer** gespeichert werden Pfad, Farben, Spalten und eingeklappte Gruppen, unter `%APPDATA%\PConTRoL\settings.json`.
-- **Gemeinsam für alle Rechner** gelten die Reihenfolge im Vorrat, die Gruppen und das Log, unter `<Hauptordner>\_PConTRoL\`.
+- **Pro Benutzer** gespeichert werden Pfad, Größe, Farben, Spalten und eingeklappte Gruppen, unter `%APPDATA%\PConTRoL\settings.json`.
+- **Gemeinsam für alle Rechner** gelten die Reihenfolge im Vorrat, die Gruppen, das Log und die Statistik, unter `<Hauptordner>\_PConTRoL\`.
 
 ## Bedienung
 
@@ -82,11 +82,30 @@ Unten im Fenster stehen zum markierten Auftrag das Vorschaubild (.jpg aus Better
 - **Rechtsklick** aufs Tray-Symbol: Menü, darin **Beenden**.
 - Farben, Deckkraft und „Immer im Vordergrund“ stellst du unter *Einstellungen → Pop-up* ein, mit Live-Vorschau.
 
-### Testmodus
+### Größe
 
-Unter *Einstellungen → Testmodus* einen Testordner wählen und den Testmodus einschalten.
-Die Schaltfläche *Testordner mit einer Kopie des Hauptordners füllen* kopiert `_Input` und `_NestResult` dorthin.
-Im Hauptordner wird dabei nichts verändert. Solange der Testmodus aktiv ist, zeigt das Fenster ein orangefarbenes **TESTMODUS**-Schild.
+Unter *Einstellungen → Größe* lassen sich das Programmfenster und das Pop-up getrennt vergrößern oder verkleinern, jeweils von 75 % bis 200 %.
+Die Vorschau ist sofort sichtbar, *Abbrechen* stellt den alten Wert wieder her.
+Bei großen Werten am besten im Vollbild arbeiten, oder den Detailbereich unten kleiner ziehen.
+
+### Statistik
+
+Der Button **Statistik** zeigt für jedes Material ein Kreisdiagramm mit **Ausnutzung** (grün) und **Verschnitt** (rot), dazu die Zahl der Platten und die Flächen in m².
+
+- **Was gezählt wird:** jede Platte, die die Maschine fertig bearbeitet hat.
+  PConTRoL erkennt das daran, dass sie aus `_Input` verschwindet, ohne dass PConTRoL sie zurückgeholt hat.
+  Das funktioniert nur, solange PConTRoL läuft. Löscht jemand einen Auftrag an der Maschine von Hand, zählt er ebenfalls als fertig.
+- **Ausnutzung** = Summe der Teileflächen (Breite × Länge jedes Teils aus der .lbl) / Plattenfläche. Das entspricht dem Wert *Efficiency* von BetterNest.
+  **Verschnitt** = 100 % − Ausnutzung.
+- **Durchschnitt je Material** ist flächengewichtet: Summe der genutzten Flächen / Summe der Plattenflächen.
+- **Materialien** erscheinen automatisch, sobald eine Platte mit einem neuen Material fertig wird.
+  Leerzeichen und Groß-/Kleinschreibung spielen keine Rolle: „Dekor 12mm“ und „ dekor  12MM“ gelten als dasselbe Material.
+- **Keine Doppelzählung:** Jede Platte wird über den Inhalt ihrer .lbl erkannt, auch wenn sie mehrfach gesehen oder mehrfach importiert wird.
+- **Zeitraum:** oben auswählen, z. B. *Dieser Monat* oder *Letztes Jahr*, oder selbst *von/bis* eintragen.
+- **Export:** *Übersicht als CSV* (je Material) und *Platten als CSV* (jede Platte einzeln), jeweils für den gewählten Zeitraum, direkt in Excel zu öffnen.
+- **Bereits bearbeitete Platten übernehmen:** Unter *Einstellungen → Statistik* den Archivordner wählen und auf **Archiv jetzt einlesen** klicken.
+  PConTRoL durchsucht ihn mit allen Unterordnern nach `.lbl`-Dateien. Als Zeitpunkt gilt das Dateidatum. Mehrfaches Einlesen schadet nicht.
+- Gespeichert wird in `<Hauptordner>\_PConTRoL\statistik.jsonl`, eine Zeile pro Platte, gemeinsam für alle Rechner.
 
 ## Sicherheit
 
@@ -109,10 +128,18 @@ Im Hauptordner wird dabei nichts verändert. Solange der Testmodus aktiv ist, ze
 ## Für Entwickler
 
 ```
-src\PConTRoL.Core    Logik: Einlesen, Reihenfolge→Datum, Gruppen, sicheres Verschieben, Log
-src\PConTRoL.App     WPF-Oberfläche, Tray, Pop-up, Einstellungen
-tests\PConTRoL.Tests xUnit-Tests (Datumslogik, Gruppen, Verschieben inkl. gesperrter Dateien)
+src\PConTRoL.Core    Logik: Einlesen, Reihenfolge→Datum, Gruppen, sicheres Verschieben, Log, Statistik
+src\PConTRoL.App     WPF-Oberfläche, Tray, Pop-up, Einstellungen, Statistikfenster
+tests\PConTRoL.Tests xUnit-Tests (Datumslogik, Gruppen, Verschieben inkl. gesperrter Dateien, Statistik)
 ```
+
+- **Statistik** (`src\PConTRoL.Core\Statistics`), getrennt von der Oberfläche:
+  - `FinishedJobTracker` erkennt Platten, die die Maschine fertig bearbeitet hat.
+  - `StatisticsStore` speichert sie (JSON Lines, nur anhängen, Dubletten über den SHA-256 der .lbl).
+  - `StatisticsService` wertet aus (flächengewichtet je Material, Zeitfilter).
+  - `ArchiveImporter` liest einen Archivordner ein, `StatisticsCsv` exportiert nach Excel.
+- Die Kreisdiagramme zeichnet das kleine eigene Steuerelement `Views\PieChart.cs`.
+  Eine Diagramm-Bibliothek (z. B. LiveCharts2 mit SkiaSharp) würde die EXE und jedes Update deutlich größer machen und mehr können, als hier gebraucht wird.
 
 - **Sortierrichtung der Maschine:** Konstante `MachineConfig.SortOrder` in `src\PConTRoL.Core\MachineConfig.cs`. Kein Einstellungspunkt.
 - **Datumslogik:** `TimestampPlanner`.

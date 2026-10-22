@@ -59,7 +59,7 @@ public partial class App : Application
         var startInTray = e.Args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
         if (!startInTray) _main.Show();
 
-        if (string.IsNullOrWhiteSpace(settings.EffectiveRoot))
+        if (string.IsNullOrWhiteSpace(settings.MainFolder))
         {
             if (!startInTray) _main.Show();
             _main.OpenSettings();

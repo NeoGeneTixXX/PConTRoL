@@ -43,20 +43,31 @@
                        Text="Der Ordner, in dem _Input und _NestResult liegen (lokaler Pfad am Leitrechner bzw. Netzlaufwerk)." />
         </Grid>
 
-        <TextBlock Text="Testmodus" Style="{StaticResource Section}" />
-        <CheckBox x:Name="TestModeBox" Content="Testmodus – mit einer Kopie arbeiten statt mit dem echten Maschinenordner" />
-        <Grid Margin="0,8,0,0">
+        <TextBlock Text="Größe" Style="{StaticResource Section}" />
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="140" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="Testordner" Style="{StaticResource Label}" />
-            <TextBox x:Name="TestFolderBox" Grid.Column="1" />
-            <Button Grid.Column="2" Content="…" Click="OnBrowseTest" Padding="12,4" />
+            <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Programmfenster" Style="{StaticResource Label}" />
+            <DockPanel Grid.Column="1" Margin="3,6">
+                <TextBlock x:Name="MainScaleText" DockPanel.Dock="Right" Width="60" FontSize="15" TextAlignment="Right" VerticalAlignment="Center" />
+                <Slider x:Name="MainScaleSlider" Minimum="75" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center" ValueChanged="OnScaleChanged" />
+            </DockPanel>
+            <TextBlock Grid.Row="1" Text="Pop-up" Style="{StaticResource Label}" />
+            <DockPanel Grid.Row="1" Grid.Column="1" Margin="3,6">
+                <TextBlock x:Name="PopupScaleText" DockPanel.Dock="Right" Width="60" FontSize="15" TextAlignment="Right" VerticalAlignment="Center" />
+                <Slider x:Name="PopupScaleSlider" Minimum="75" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center" ValueChanged="OnScaleChanged" />
+            </DockPanel>
         </Grid>
-        <Button Content="Testordner mit einer Kopie des Hauptordners füllen" HorizontalAlignment="Left" Margin="140,6,0,0"
-                Click="OnCreateTestCopy" FontSize="14" />
+        <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" Margin="140,2,0,0" TextWrapping="Wrap"
+                   Text="100 % = Normalgröße. Vorschau sofort im Hauptfenster und im Pop-up; „Abbrechen“ stellt den alten Wert wieder her." />
 
         <TextBlock Text="Pop-up (Tray)" Style="{StaticResource Section}" />
         <Grid>
@@ -88,6 +99,30 @@
         </Grid>
         <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" Margin="140,4,0,0" TextWrapping="Wrap"
                    Text="Änderungen sind sofort im Pop-up unten rechts zu sehen (Vorschau)." />
+
+        <TextBlock Text="Statistik" Style="{StaticResource Section}" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition />
+                <RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Archivordner" Style="{StaticResource Label}" />
+            <TextBox x:Name="ArchiveFolderBox" Grid.Column="1" />
+            <Button Grid.Column="2" Content="…" Click="OnBrowseArchive" Padding="12,4" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" FontSize="13" Foreground="{StaticResource FgDim}"
+                       TextWrapping="Wrap" Margin="0,2,0,0"
+                       Text="Ordner mit bereits bearbeiteten Platten (inkl. Unterordner). Wird einmalig eingelesen; schon erfasste Platten werden nicht doppelt gezählt." />
+            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,4,0,0">
+                <Button x:Name="ImportButton" Content="Archiv jetzt einlesen" Click="OnImportArchive" FontSize="14" Margin="0,3,12,3" />
+                <TextBlock x:Name="ImportStatus" FontSize="14" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="380" />
+            </StackPanel>
+        </Grid>
 
         <TextBlock Text="Programm" Style="{StaticResource Section}" />
         <CheckBox x:Name="AutostartBox" Content="Mit Windows starten (im Tray)" />
