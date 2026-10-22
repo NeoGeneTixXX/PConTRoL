@@ -12,6 +12,7 @@ public partial class App : Application
     private TrayIcon? _tray;
     private MainWindow? _main;
     private PopupWindow? _popup;
+    private UpdateService? _updates;
     private bool _balloonShown;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -63,6 +64,53 @@ public partial class App : Application
             if (!startInTray) _main.Show();
             _main.OpenSettings();
         }
+
+        _updates = new UpdateService();
+        _updates.UpdateReady += (_, asset) =>
+        {
+            var version = asset.Version.ToString();
+            _main.ShowUpdateAvailable(version, asset.NotesMarkdown);
+            _tray.ShowUpdateAvailable(version);
+        };
+        _main.UpdateRequested += (_, _) => ApplyUpdate(confirmed: true);
+        _tray.UpdateRequested += (_, _) => ApplyUpdate(confirmed: false);
+        _updates.Start();
+    }
+
+    /// <summary>
+    /// Spielt das heruntergeladene Update ein: nur nach Bestätigung und nie während einer Dateiaktion.
+    /// Schlägt der Start des Updaters fehl, läuft die alte Version einfach weiter.
+    /// </summary>
+    private void ApplyUpdate(bool confirmed)
+    {
+        var pending = _updates?.Pending;
+        if (_main == null || pending == null) return;
+
+        if (!confirmed)
+        {
+            _main.ShowFromTray();
+            var notes = string.IsNullOrWhiteSpace(pending.NotesMarkdown) ? "" : "\n\n" + pending.NotesMarkdown.Trim();
+            var answer = MessageBox.Show(_main,
+                $"Neue Version {pending.Version}, jetzt aktualisieren?{notes}\n\nPConTRoL wird dazu kurz beendet und neu gestartet.",
+                "PConTRoL: Update", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+        }
+
+        if (_main.IsBusy)
+        {
+            MessageBox.Show(_main, "Gerade läuft noch eine Aktion. Bitte danach erneut auf „Jetzt aktualisieren“ klicken.",
+                "PConTRoL: Update", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!_updates!.ApplyAndRestart())
+        {
+            MessageBox.Show(_main, $"Das Update konnte nicht gestartet werden. Version {UpdateService.CurrentVersion} läuft weiter.\n\nDetails in {SettingsStore.Folder}\\update.log",
+                "PConTRoL: Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        ExitApp();
     }
 
     private void ExitApp()

@@ -15,7 +15,10 @@
     <AssemblyName>PConTRoL</AssemblyName>
     <RootNamespace>PConTRoL.App</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
+    <!-- Eigener Main in Program.cs (Velopack muss zuerst laufen) -->
+    <StartupObject>PConTRoL.App.Program</StartupObject>
+    <!-- Versionsnummer (SemVer). Vor jedem Release erhöhen; das Git-Tag v<Version> muss dazu passen. -->
+    <Version>1.1.0</Version>
     <Product>PConTRoL</Product>
     <Description>Produktionsreihenfolge für die Nesting-Maschine</Description>
 
@@ -35,6 +38,13 @@
 
   <ItemGroup>
     <Resource Include="app.ico" />
+    <!-- App.xaml liefert nur noch Ressourcen, den Einstiegspunkt stellt Program.cs -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
 </Project>

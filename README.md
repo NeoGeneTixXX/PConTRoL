@@ -10,13 +10,34 @@ PConTRoL setzt die Änderungsdaten so, dass die Maschine genau die angezeigte Re
 
 ---
 
-## Installation
+## Installation (einmalig auf dem Nesting-Rechner)
 
-1. Die Datei `publish\PConTRoL.exe` auf den Rechner kopieren, z. B. nach `C:\Programme\PConTRoL\`.
-   Es ist eine einzelne EXE. .NET muss nicht installiert sein.
-2. Die EXE starten. Beim ersten Start öffnen sich die **Einstellungen**: Dort den **Hauptordner** wählen, also den Ordner,
+1. Auf <https://github.com/NeoGeneTixXX/PConTRoL/releases/latest> die Datei **`PConTRoL-win-Setup.exe`** herunterladen
+   und starten. Es sind keine Administratorrechte nötig, und .NET muss nicht installiert sein.
+   - PConTRoL wird für den angemeldeten Windows-Benutzer nach `%LOCALAPPDATA%\PConTRoL` installiert.
+   - Es legt eine Verknüpfung auf dem Desktop und im Startmenü an.
+   - Die Setup-Datei ist nicht signiert. Zeigt Windows „Der Computer wurde durch Windows geschützt“, auf *Weitere Informationen → Trotzdem ausführen* klicken.
+2. Beim ersten Start öffnen sich die **Einstellungen**: Dort den **Hauptordner** wählen, also den Ordner,
    in dem `_Input` und `_NestResult` liegen.
-3. Optional „Mit Windows starten“ anhaken. Das Programm startet dann beim Anmelden automatisch im Tray.
+3. „Mit Windows starten“ anhaken. Das Programm startet dann beim Anmelden automatisch im Tray.
+4. Wer vorher die alte, lose `PConTRoL.exe` benutzt hat: diese löschen und den alten Autostart-Eintrag durch Schritt 3 ersetzen.
+   Die Einstellungen bleiben erhalten, weil sie in `%APPDATA%` liegen.
+
+Deinstallieren geht über *Windows-Einstellungen → Apps*.
+
+### Automatische Updates
+
+- PConTRoL prüft **beim Start und danach alle 4 Stunden**, ob es auf GitHub ein neues Release gibt. Ist eines da, wird es im Hintergrund heruntergeladen.
+- Danach erscheinen ein gelber Hinweis im Hauptfenster und eine Meldung am Tray-Symbol: **„Neue Version x.y.z, jetzt aktualisieren?“**, zusammen mit den Änderungsnotizen.
+  - **Jetzt aktualisieren**: PConTRoL beendet sich kurz, spielt das Update ein und startet neu.
+    Läuft gerade eine Aktion (Verschieben, Datum setzen), wird nichts eingespielt. Dann einfach danach noch einmal klicken.
+  - **Später**: Das Update wird beim **nächsten Programmstart** eingespielt.
+  - Das Tray-Menü zeigt zusätzlich den Eintrag *Neue Version … installieren*.
+- Ein Update wird **nie automatisch während der Arbeit** eingespielt.
+- Einstellungen (`%APPDATA%\PConTRoL`), die Reihenfolge und das Log (`<Hauptordner>\_PConTRoL`) liegen außerhalb des Programmordners und überstehen jedes Update.
+- Schlägt ein Update fehl, läuft die bisherige Version weiter. Das Ergebnis steht in `%APPDATA%\PConTRoL\update.log`.
+  Details des Updaters stehen im Velopack-Log unter `%LOCALAPPDATA%\PConTRoL\`.
+- Die installierte Version steht im Hauptfenster oben neben „PConTRoL“.
 
 PConTRoL kann auf mehreren Rechnern laufen:
 
@@ -106,6 +127,36 @@ dotnet publish src\PConTRoL.App -c Release -o publish
 ```
 
 - Das App-Symbol erzeugt `tools\make-icon.ps1`.
+- **Testdaten:** Die Dateien in `tests\PConTRoL.Tests\TestData` sind erfundene Beispiele im Aufbau echter Nest-Dateien.
+  **Keine echten Auftragsdaten, Pfade oder Rechnernamen einchecken.** Das Repo ist öffentlich.
+  Die `.gitignore` blockiert `.hop`, `.lbl`, `.nst`, Bilder, Logs und `settings.json` außerhalb von `TestData`.
+
+### Neue Version veröffentlichen
+
+1. Code ändern, dann lokal testen: `dotnet test tests\PConTRoL.Tests -c Release`.
+2. In `src\PConTRoL.App\PConTRoL.App.csproj` die `<Version>` erhöhen (SemVer):
+   - **Patch** (1.2.0 → 1.2.1) für Fehlerbehebungen
+   - **Minor** (1.2.0 → 1.3.0) für neue Funktionen
+   - **Major** (1.x → 2.0.0) für grundlegende Änderungen
+3. Committen und pushen.
+4. Ein Tag mit derselben Versionsnummer setzen und pushen. Die Nachricht des Tags ist der Änderungstext, den die App im Update-Hinweis anzeigt:
+
+```
+git tag -a v1.3.0 -m "Neue Spalte Materialstärke; Pop-up merkt sich die Position"
+git push origin v1.3.0
+```
+
+5. GitHub Actions (`.github/workflows/release.yml`) übernimmt den Rest:
+   - prüft, dass Tag und `<Version>` übereinstimmen
+   - führt die Tests aus
+   - baut die EXE für Windows x64
+   - packt sie mit Velopack
+   - veröffentlicht sie unter *Releases*
+
+   Den Fortschritt siehst du im Reiter *Actions*. Spätestens 4 Stunden danach, oder beim nächsten Start, meldet sich das Update auf dem Nesting-Rechner.
+
+Hat sich ein Fehler eingeschlichen, nicht das Release löschen, sondern einfach eine höhere Version mit der Korrektur veröffentlichen.
+Velopack aktualisiert nur auf höhere Versionsnummern.
 
 ### Annahmen aus den Beispieldateien
 

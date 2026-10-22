@@ -61,6 +61,8 @@ public partial class MainWindow : Window, IJobListHost
             if (WindowState == WindowState.Minimized) HideToTray();
         };
 
+        VersionText.Text = "v" + UpdateService.CurrentVersion;
+
         ApplyRoot();
         _timer.Start();
     }
@@ -73,7 +75,27 @@ public partial class MainWindow : Window, IJobListHost
 
     public UserSettings Settings => _settings;
 
+    /// <summary>Läuft gerade eine Dateiaktion (Verschieben, Datum setzen …)? Dann kein Update einspielen.</summary>
+    public bool IsBusy => _busy;
+
     public event EventHandler? HiddenToTray;
+
+    /// <summary>Klick auf „Jetzt aktualisieren“ im Update-Hinweis.</summary>
+    public event EventHandler? UpdateRequested;
+
+    // ---------- Update-Hinweis ----------
+
+    public void ShowUpdateAvailable(string version, string? notes)
+    {
+        UpdateTitle.Text = $"Neue Version {version}, jetzt aktualisieren?";
+        UpdateNotes.Text = string.IsNullOrWhiteSpace(notes) ? "" : notes.Trim();
+        UpdateNotes.Visibility = UpdateNotes.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBanner.Visibility = Visibility.Visible;
+    }
+
+    private void OnUpdateNowClick(object sender, RoutedEventArgs e) => UpdateRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnUpdateLaterClick(object sender, RoutedEventArgs e) => UpdateBanner.Visibility = Visibility.Collapsed;
 
     // ---------- Ordner / Aktualisierung ----------
 

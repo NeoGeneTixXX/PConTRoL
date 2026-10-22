@@ -1,0 +1,72 @@
+# Baut PConTRoL für Windows x64 und veröffentlicht es als GitHub Release mit Velopack-Paketen.
+# Start: ein Tag "v<Version>" pushen, z. B.  git tag -a v1.2.0 -m "Was neu ist"  &&  git push origin v1.2.0
+# Die Nachricht des Tags wird zu den Änderungsnotizen, die die App beim Update anzeigt.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  VPK_VERSION: 1.2.161   # muss zur Velopack-Paketversion in PConTRoL.App.csproj passen
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version aus Tag prüfen
+        id: ver
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.Substring(1)
+          [xml]$proj = Get-Content src/PConTRoL.App/PConTRoL.App.csproj
+          $projVersion = ($proj.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          if ($projVersion -ne $version) {
+            Write-Error "Tag $tag passt nicht zur <Version>$projVersion</Version> in PConTRoL.App.csproj"
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Tests
+        run: dotnet test tests/PConTRoL.Tests -c Release
+
+      - name: Publish
+        run: dotnet publish src/PConTRoL.App -c Release -o publish/release -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Änderungsnotizen aus der Tag-Nachricht
+        run: |
+          git fetch --force origin "refs/tags/${{ github.ref_name }}:refs/tags/${{ github.ref_name }}"
+          $notes = (git tag -l --format='%(contents)' "${{ github.ref_name }}" | Out-String).Trim()
+          if (-not $notes) { $notes = "PConTRoL ${{ steps.ver.outputs.version }}" }
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+
+      - name: Velopack-Paket bauen
+        run: |
+          dotnet tool install -g vpk --version $env:VPK_VERSION
+          # Vorherige Version holen, damit Velopack kleine Delta-Updates erzeugen kann (beim ersten Release leer)
+          vpk download github --repoUrl "${{ github.server_url }}/${{ github.repository }}" --token "${{ secrets.GITHUB_TOKEN }}" -o Releases
+          vpk pack -u PConTRoL -v ${{ steps.ver.outputs.version }} -r win-x64 -p publish/release -e PConTRoL.exe `
+            --packTitle PConTRoL --packAuthors PConTRoL -i src/PConTRoL.App/app.ico `
+            --releaseNotes release-notes.md -o Releases
+
+      - name: Als GitHub Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk upload github --repoUrl "${{ github.server_url }}/${{ github.repository }}" --token "${{ secrets.GITHUB_TOKEN }}" `
+            --publish --releaseName "PConTRoL ${{ steps.ver.outputs.version }}" --tag "${{ github.ref_name }}" -o Releases
+          gh release edit "${{ github.ref_name }}" --notes-file release-notes.md
