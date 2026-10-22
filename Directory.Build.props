@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    Alle Build-Ausgaben (auch Zwischenstände und Tests) landen unter publish\_build,
+    damit nichts verstreut in den Projektordnern liegt. Die fertige EXE kommt per
+      dotnet publish src\PConTRoL.App -c Release -o publish
+    direkt nach publish\.
+  -->
+  <PropertyGroup>
+    <PConTRoLBuildRoot>$(MSBuildThisFileDirectory)publish\_build\$(MSBuildProjectName)\</PConTRoLBuildRoot>
+    <BaseOutputPath>$(PConTRoLBuildRoot)bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(PConTRoLBuildRoot)obj\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

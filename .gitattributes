@@ -1,0 +1,3 @@
+# Beispieldateien der Maschine byte-genau behalten (ANSI/UTF-16, keine Zeilenend-Umwandlung)
+tests/PConTRoL.Tests/TestData/** binary
+*.ico binary

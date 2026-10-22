@@ -1,0 +1,38 @@
+<UserControl x:Class="PConTRoL.App.Views.JobListControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- Spalte "Auftrag": Einrückung, Symbol (▼/▶ für Gruppen, ⚙ für laufend) und Name -->
+        <DataTemplate x:Key="NameCell">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="{Binding Indent}" />
+                <TextBlock x:Name="Glyph" Text="{Binding Glyph}" Width="26" FontSize="15"
+                           VerticalAlignment="Center" Tag="toggle" Cursor="Hand"
+                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridCell}}" />
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridCell}}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsGroup}" Value="False">
+                    <Setter TargetName="Glyph" Property="Cursor" Value="Arrow" />
+                    <Setter TargetName="Glyph" Property="Tag" Value="{x:Null}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <DataGrid x:Name="Grid"
+                  Style="{StaticResource JobGrid}"
+                  ColumnHeaderStyle="{StaticResource JobGridHeader}"
+                  CellStyle="{StaticResource JobGridCell}"
+                  RowStyle="{StaticResource JobGridRow}"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling" />
+        <TextBlock x:Name="EmptyText" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="18" Foreground="{StaticResource FgDim}" IsHitTestVisible="False"
+                   TextAlignment="Center" />
+    </Grid>
+</UserControl>

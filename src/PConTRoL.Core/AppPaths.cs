@@ -1,0 +1,30 @@
+namespace PConTRoL.Core;
+
+/// <summary>Alle Pfade, die aus dem Hauptordner abgeleitet werden.</summary>
+public sealed class AppPaths
+{
+    public const string InputFolderName = "_Input";
+    public const string NestResultFolderName = "_NestResult";
+
+    /// <summary>Gemeinsamer Ordner für Reihenfolge, Gruppen und Log (für alle Rechner gleich).</summary>
+    public const string SharedFolderName = "_PConTRoL";
+
+    public AppPaths(string root)
+    {
+        Root = Path.GetFullPath(root);
+        Input = Path.Combine(Root, InputFolderName);
+        NestResult = Path.Combine(Root, NestResultFolderName);
+        Shared = Path.Combine(Root, SharedFolderName);
+    }
+
+    public string Root { get; }
+    public string Input { get; }
+    public string NestResult { get; }
+    public string Shared { get; }
+    public string LayoutFile => Path.Combine(Shared, "reihenfolge.json");
+    public string LogFolder => Shared;
+
+    public bool IsValid => Directory.Exists(Input) && Directory.Exists(NestResult);
+
+    public string NestJobFolder(string nestJob) => Path.Combine(NestResult, nestJob);
+}

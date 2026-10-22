@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PConTRoL.Core\PConTRoL.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Nur für Tray-Symbol (NotifyIcon) und Farbwähler (ColorDialog) -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>PConTRoL</AssemblyName>
+    <RootNamespace>PConTRoL.App</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>PConTRoL</Product>
+    <Description>Produktionsreihenfolge für die Nesting-Maschine</Description>
+
+    <!-- Veröffentlichen als einzelne EXE ohne .NET-Installation auf dem Zielrechner -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms und WPF haben gleichnamige Typen – keine globalen Usings für WinForms/Drawing -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
+</Project>

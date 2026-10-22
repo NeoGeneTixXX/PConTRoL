@@ -1,0 +1,44 @@
+# Build-Ausgaben (alles landet unter publish\, siehe Directory.Build.props)
+publish/
+bin/
+obj/
+Releases/
+*.nupkg
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+
+# Echte Maschinen- und Auftragsdaten: NIE ins Repo.
+# Erlaubt sind nur die erfundenen Beispieldateien unter tests/**/TestData/ (Ausnahme ganz unten).
+*.hop
+*.lbl
+*.nst
+*.ups
+*.dxf
+*.jpg
+*.jpeg
+*.png
+*.bmp
+_Input/
+_NestResult/
+_NST/
+_DXF/
+
+# Logs und lokale Einstellungen / gespeicherte Reihenfolgen
+*.log
+logs/
+settings.json
+layout*.json
+appsettings.*.json
+*.local.json
+.env
+*.pfx
+*.p12
+
+# Ausnahme: anonymisierte Testdaten
+!tests/**/TestData/
+!tests/**/TestData/*.hop
+!tests/**/TestData/*.lbl

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PConTRoL.App/PConTRoL.App.csproj" />
+    <Project Path="src/PConTRoL.Core/PConTRoL.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PConTRoL.Tests/PConTRoL.Tests.csproj" />
+  </Folder>
+</Solution>

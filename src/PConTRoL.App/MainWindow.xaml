@@ -1,0 +1,140 @@
+﻿<Window x:Class="PConTRoL.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:PConTRoL.App.Views"
+        Title="PConTRoL – Produktionsreihenfolge" Width="1600" Height="950" MinWidth="1000" MinHeight="600"
+        Background="{StaticResource WindowBg}" Foreground="{StaticResource Fg}">
+    <Window.InputBindings>
+        <KeyBinding Key="F11" Command="{x:Static views:Commands.FullScreen}" />
+        <KeyBinding Key="F5" Command="{x:Static views:Commands.Refresh}" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static views:Commands.FullScreen}" Executed="OnFullScreen" />
+        <CommandBinding Command="{x:Static views:Commands.Refresh}" Executed="OnRefreshCommand" />
+    </Window.CommandBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="250" />
+            <RowDefinition Height="6" />
+            <RowDefinition x:Name="DetailsRow" Height="230" MinHeight="60" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Kopfzeile -->
+        <Border Background="{StaticResource PanelBg}" Padding="12,6">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="⟳  Aktualisieren" Click="OnRefreshClick" ToolTip="Ordner sofort neu einlesen (F5)" />
+                    <Button Content="⛶  Vollbild" Click="OnFullScreenClick" ToolTip="Vollbild an/aus (F11)" />
+                    <Button Content="▣  Pop-up" Click="OnPopupClick" ToolTip="Kleines Fenster mit dem laufenden und den nächsten Aufträgen" />
+                    <Button Content="⚙  Einstellungen" Click="OnSettingsClick" />
+                </StackPanel>
+                <TextBlock Text="PConTRoL" FontSize="24" FontWeight="Bold" Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
+                <Border x:Name="TestBadge" Background="{StaticResource TestBg}" CornerRadius="4" Padding="10,3" Margin="16,0,0,0"
+                        VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock Text="TESTMODUS" FontWeight="Bold" FontSize="15" Foreground="Black" />
+                </Border>
+                <TextBlock x:Name="FolderText" FontSize="14" Foreground="{StaticResource FgDim}" VerticalAlignment="Center"
+                           Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <!-- Zwei Listen -->
+        <Grid Grid.Row="1" Margin="8,8,8,4" x:Name="ListsArea">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <DockPanel>
+                <TextBlock x:Name="StockHeader" DockPanel.Dock="Top" FontSize="19" FontWeight="Bold" Margin="2,0,0,6"
+                           Text="Auftragsvorrat" />
+                <WrapPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                    <Button Content="⤒ Ganz oben" Click="OnStep" Tag="Stock|Top" />
+                    <Button Content="▲ Hoch" Click="OnStep" Tag="Stock|Up" />
+                    <Button Content="▼ Runter" Click="OnStep" Tag="Stock|Down" />
+                    <Button Content="⤓ Ganz unten" Click="OnStep" Tag="Stock|Bottom" />
+                    <Button Content="＋ Gruppe" Click="OnGroupButton" Tag="Stock" ToolTip="Markierte Aufträge gruppieren – oder neue leere Gruppe, wenn nichts markiert ist" />
+                </WrapPanel>
+                <views:JobListControl x:Name="StockList" Side="Stock" />
+            </DockPanel>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <Button Style="{StaticResource ArrowButton}" Click="OnSendEnd" ToolTip="Markierte Aufträge ans Ende der Maschinenliste">
+                    <StackPanel>
+                        <TextBlock Text="➜" FontSize="34" HorizontalAlignment="Center" Foreground="{StaticResource Accent}" />
+                        <TextBlock Text="ans Ende" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ArrowButton}" Click="OnSendNext" ToolTip="Markierte Aufträge direkt nach dem laufenden Auftrag einreihen">
+                    <StackPanel>
+                        <TextBlock Text="⇥" FontSize="34" HorizontalAlignment="Center" Foreground="{StaticResource Accent}" />
+                        <TextBlock Text="als Nächstes" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ArrowButton}" Click="OnReturn" ToolTip="Markierte Aufträge zurück in den Vorrat" Margin="6,30,6,8">
+                    <StackPanel>
+                        <TextBlock Text="⬅" FontSize="34" HorizontalAlignment="Center" Foreground="{StaticResource Danger}" />
+                        <TextBlock Text="zurück" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <DockPanel Grid.Column="2">
+                <TextBlock x:Name="MachineHeader" DockPanel.Dock="Top" FontSize="19" FontWeight="Bold" Margin="2,0,0,6"
+                           Text="An der Maschine" />
+                <WrapPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                    <Button Content="⤒ Als Nächstes" Click="OnStep" Tag="Machine|Top" />
+                    <Button Content="▲ Hoch" Click="OnStep" Tag="Machine|Up" />
+                    <Button Content="▼ Runter" Click="OnStep" Tag="Machine|Down" />
+                    <Button Content="⤓ Ganz unten" Click="OnStep" Tag="Machine|Bottom" />
+                    <Button Content="＋ Gruppe" Click="OnGroupButton" Tag="Machine" ToolTip="Markierte Aufträge gruppieren – oder neue leere Gruppe, wenn nichts markiert ist" />
+                </WrapPanel>
+                <views:JobListControl x:Name="MachineList" Side="Machine" />
+            </DockPanel>
+        </Grid>
+
+        <GridSplitter Grid.Row="2" HorizontalAlignment="Stretch" ResizeDirection="Rows" />
+
+        <!-- Details zum markierten Auftrag -->
+        <Border Grid.Row="3" Background="{StaticResource PanelBg}" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="380" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Background="White" Margin="0,0,12,0" CornerRadius="3">
+                    <Image x:Name="PreviewImage" Stretch="Uniform" MaxWidth="560" RenderOptions.BitmapScalingMode="HighQuality" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                    <TextBlock x:Name="DetailTitle" FontSize="19" FontWeight="Bold" TextWrapping="Wrap"
+                               Text="Auftrag anklicken für Details" Foreground="{StaticResource FgDim}" />
+                    <TextBlock x:Name="DetailText" FontSize="15" TextWrapping="Wrap" Margin="0,6,0,0" LineHeight="23" />
+                </StackPanel>
+                <DataGrid x:Name="PartsGrid" Grid.Column="2" Style="{StaticResource JobGrid}" AllowDrop="False"
+                          ColumnHeaderStyle="{StaticResource JobGridHeader}" CellStyle="{StaticResource JobGridCell}"
+                          RowHeight="28" FontSize="15" SelectionMode="Single">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="RD-Nr." Binding="{Binding RdNumber}" Width="120" />
+                        <DataGridTextColumn Header="Bezeichnung" Binding="{Binding Description}" Width="*" />
+                        <DataGridTextColumn Header="Artikel" Binding="{Binding Article}" Width="200" />
+                        <DataGridTextColumn Header="Maß" Binding="{Binding Size}" Width="120" />
+                        <DataGridTextColumn Header="Nr." Binding="{Binding Number}" Width="90" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <!-- Statuszeile -->
+        <Border Grid.Row="4" Background="{StaticResource PanelBg}" Padding="12,5">
+            <DockPanel>
+                <TextBlock x:Name="BusyText" DockPanel.Dock="Right" FontSize="14" Foreground="{StaticResource Accent}" />
+                <TextBlock x:Name="StatusText" FontSize="14" Foreground="{StaticResource FgDim}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

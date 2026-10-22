@@ -1,0 +1,49 @@
+;MAKROTYP=0
+;INSTVERSION=
+;EXEVERSION=8.3.20.286[BetterNest.exe]
+;BILD=
+;INFO=
+;WZGV=MUSTER_350
+;WZGVCONFIG=
+;MASCHINE=MASCHINE1
+;NCNAME=MUSTER_KW01_1_Montag(XX)_Beispielplatte_12mm_01
+;KOMMENTAR=
+;DX=0
+;DY=0
+;DZ=0
+;DIALOGDLL=Dialoge.Dll
+;DIALOGPROC=StandardFormAnzeigen
+;DIALOGKIND=0
+;AUTOSCRIPTSTART=1
+;BUTTONBILD=
+;DIMENSION_UNIT=0
+VARS
+   DX := 5600;
+   DY := 2100;
+   DZ := 12;
+   _hhdata_Material := 'Beispielplatte 12mm';
+   _hhdata_StorageID := '10001';
+   _hhdata_NestGrainDirection := 'ignoriert';
+   _hhdata_NestEdgeSpacingLeft := 0;
+   _hhdata_NestEdgeSpacingRight := 0;
+   _hhdata_NestEdgeSpacingTop := 10;
+   _hhdata_NestEdgeSpacingBottom := 10;
+_hhdata_ProdPrio := 55;
+START
+Fertigteil (DX,DY,DZ,0,0,0,0,0,'',0,0,0,0)
+;$$Init
+CALL BN_Init()
+;$$Alle Bohrungen und nicht durchgängige Bearbeitungen
+WZB (501,_VE,_V,_VA,_SD,_ANF,'51')
+Bohrung (100,100,5,-12.1,10,0,0,0,0,90,0,0)
+Ebene0()
+WZF (40,_VE,_V,_VA,_SD,_ANF,'1')
+SP (200,200,0.5,2,0,1.5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,90,0,0,0.5)
+G01 (1200,200,-4,0,0,0)
+G01 (1200,1200,-4,0,0,0)
+G01 (200,1200,-4,0,0,0)
+G01 (200,200,-4,0,0,0)
+EP (1,1.5,0)
+Ebene0()
+;$$Final
+CALL BN_Final()
