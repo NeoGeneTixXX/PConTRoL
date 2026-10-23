@@ -28,6 +28,7 @@ public partial class MainWindow : Window, IJobListHost
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly AutoFeeder _autoFeeder = new();
     private readonly Dictionary<DataGridColumn, string> _partColumnKeys = [];
+    private string? _kanbanSignature;
     private string? _autoError;
     private UserSettings _settings;
     private QueueController? _controller;
@@ -291,6 +292,7 @@ public partial class MainWindow : Window, IJobListHost
         MachineList.EmptyMessage = "Keine Aufträge an der Maschine";
         StockList.SetRows(BuildRows(snap, Side.Stock));
         MachineList.SetRows(BuildRows(snap, Side.Machine));
+        UpdateKanbanBar(snap.KanbanTiles);
 
         StockHeader.Text = $"Auftragsvorrat  ·  {Plural(snap.Scan.Stock.Count)}";
         MachineHeader.Text = $"An der Maschine  ·  {Plural(snap.Scan.Machine.Count)}";
@@ -310,6 +312,53 @@ public partial class MainWindow : Window, IJobListHost
         MachineList.EmptyMessage = message;
         StockList.SetRows([]);
         MachineList.SetRows([]);
+        UpdateKanbanBar([]);
+    }
+
+    // ---------- Kanban-Kacheln ----------
+
+    /// <summary>Kacheln in der Kopfzeile; nur neu aufbauen, wenn sich etwas geändert hat.</summary>
+    private void UpdateKanbanBar(IReadOnlyList<Core.Kanban.KanbanTile> tiles)
+    {
+        var signature = string.Join("\n", tiles.Select(t => $"{t.Id}|{t.Name}|{t.Files.Count}"));
+        if (signature == _kanbanSignature) return;
+        _kanbanSignature = signature;
+
+        KanbanBar.Children.Clear();
+        foreach (var tile in tiles)
+        {
+            var content = new StackPanel();
+            content.Children.Add(new TextBlock { Text = tile.Name, FontSize = 15, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center });
+            content.Children.Add(new TextBlock
+            {
+                Text = Plural(tile.Files.Count),
+                FontSize = 12,
+                Foreground = (Brush)FindResource("FgDim"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+            });
+            var button = new Button
+            {
+                Content = content,
+                MinWidth = 110,
+                Padding = new Thickness(12, 3, 12, 3),
+                Margin = new Thickness(3, 0, 3, 0),
+                BorderBrush = (Brush)FindResource("Accent"),
+                ToolTip = $"Kanban „{tile.Name}“: {Plural(tile.Files.Count)} als Kopie ans Ende der Maschine schicken\n" + string.Join("\n", tile.Files),
+            };
+            var id = tile.Id;
+            var name = tile.Name;
+            var count = tile.Files.Count;
+            button.Click += async (_, _) => await SendKanban(id, name, count);
+            KanbanBar.Children.Add(button);
+        }
+    }
+
+    private async Task SendKanban(string tileId, string name, int count)
+    {
+        var answer = MessageBox.Show(this, $"Kanban „{name}“ ({Plural(count)}) als Kopie ans Ende der Maschine schicken?",
+            "Kanban", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+        await Execute(c => c.SendKanbanTile(tileId), $"Kanban „{name}“ zur Maschine");
     }
 
     private List<RowViewModel> BuildRows(QueueSnapshot snap, Side side)
@@ -689,10 +738,11 @@ public partial class MainWindow : Window, IJobListHost
     public void OpenSettings()
     {
         CaptureLayout();
-        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates);
+        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates, _controller);
         if (IsVisible) dlg.Owner = this;
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var saved = dlg.ShowDialog() == true;
+        if (dlg.KanbanChanged) _ = RefreshNow(); // Kacheln wirken sofort, auch bei „Abbrechen“
 
         // Fenstergröße merken, auch bei „Abbrechen“.
         _settings.SettingsWidth = dlg.Result.SettingsWidth = dlg.LastSize.Width;

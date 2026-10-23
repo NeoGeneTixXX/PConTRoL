@@ -22,6 +22,9 @@ public sealed class QueueSnapshot
     public required LayoutDocument Layout { get; init; }
     public required DateTime Time { get; init; }
 
+    /// <summary>Kanban-Kacheln (gemeinsam für alle Rechner).</summary>
+    public IReadOnlyList<Kanban.KanbanTile> KanbanTiles { get; init; } = [];
+
     public string? RunningKey => Scan.RunningKey;
 
     public IReadOnlyDictionary<string, JobInfo> StockByKey =>
@@ -40,7 +43,7 @@ public sealed class QueueSnapshot
 /// Zentrale Steuerung: liest die Ordner, hält Reihenfolge/Gruppen und führt Aktionen sicher aus.
 /// Alle öffentlichen Methoden sind threadsicher (eine Aktion zur Zeit).
 /// </summary>
-public sealed class QueueController
+public sealed partial class QueueController
 {
     private readonly object _sync = new();
     private readonly AppPaths _paths;
@@ -74,13 +77,13 @@ public sealed class QueueController
         lock (_sync) return RefreshCore();
     }
 
+    /// <summary>Kleinste Production ID, die PConTRoL vergibt (999 hat im JobManager eine Sonderbedeutung: Platte vorziehen).</summary>
+    public const long FirstProductionId = 1000;
+
     /// <summary>
     /// An der Maschine ist die Reihenfolge fest: Aufträge kommen immer ans Ende, in der Reihenfolge,
     /// in der sie zur Maschine geschickt werden, und lassen sich dort nicht mehr umsortieren.
     /// </summary>
-    /// <summary>Kleinste Production ID, die PConTRoL vergibt (999 hat im JobManager eine Sonderbedeutung: Platte vorziehen).</summary>
-    public const long FirstProductionId = 1000;
-
     public const string MachineOrderFixedMessage =
         "Die Reihenfolge an der Maschine ist fest: Aufträge werden in der Reihenfolge abgearbeitet, in der sie zur Maschine geschickt wurden.";
 
@@ -211,7 +214,7 @@ public sealed class QueueController
         if (_doc == null || _store.HasChangedOnDisk())
             _doc = _store.Load();
         LayoutOps.Reconcile(_doc, scan);
-        return new QueueSnapshot { Scan = scan, Layout = _doc.Clone(), Time = DateTime.Now };
+        return new QueueSnapshot { Scan = scan, Layout = _doc.Clone(), Time = DateTime.Now, KanbanTiles = LoadKanbanTiles() };
     }
 
     /// <summary>Von der Maschine fertig bearbeitete Platten in die Statistik schreiben. Fehler stören den Betrieb nie.</summary>
@@ -292,7 +295,7 @@ public sealed class QueueController
         LayoutOps.Insert(machine, keys, keep, carried, DropTarget.End, snap.RunningKey);
 
         // Der JobManager sortiert zuerst nach Production ID: neue Aufträge bekommen fortlaufend höhere IDs als alles an der Maschine.
-        var nextId = Math.Max(Math.Max(doc.LastProductionId, snap.Scan.Machine.Select(j => j.ProductionId).DefaultIfEmpty().Max()), FirstProductionId - 1);
+        var nextId = LastUsedProductionId(snap, doc);
 
         var tx = new FileTransaction(_retry, _log);
         try
@@ -305,7 +308,8 @@ public sealed class QueueController
             }
 
             // 2. Daten setzen – bei neuen Aufträgen noch im Vorrat, damit sie in _Input sofort ganz unten einsortiert sind.
-            ApplyAppendDates(keys, snap, tx, "Zur Maschine");
+            ApplyAppendDates(keys.Select(k => snap.StockByKey[k]).Select(j => (j.Key, j.HopPath, j.LblPath, j.LastWriteUtc)).ToList(),
+                snap, tx, "Zur Maschine");
 
             // 3. Verschieben: erst .lbl, dann .hop (die Maschine sieht die .hop erst, wenn alles da ist).
             foreach (var key in keys)
@@ -408,14 +412,14 @@ public sealed class QueueController
     /// Setzt die Änderungsdaten der neuen Aufträge (noch im Vorrat) so, dass sie hinter allem liegen,
     /// was schon an der Maschine ist. Dateien an der Maschine werden dabei nie angefasst.
     /// </summary>
-    private void ApplyAppendDates(IReadOnlyList<string> keys, QueueSnapshot snap, FileTransaction tx, string reason)
+    private void ApplyAppendDates(IReadOnlyList<(string Key, string HopPath, string? LblPath, DateTime LastWriteUtc)> jobs,
+        QueueSnapshot snap, FileTransaction tx, string reason)
     {
         var machine = snap.Scan.Machine;
         var anchor = _sortOrder == MachineSortOrder.OldestFirst
             ? machine.MaxBy(j => j.LastWriteUtc)
             : machine.MinBy(j => j.LastWriteUtc);
 
-        var jobs = keys.Select(k => snap.StockByKey[k]).ToList();
         var order = new List<(string Key, DateTime CurrentUtc)>();
         if (anchor != null) order.Add((anchor.Key, anchor.LastWriteUtc));
         order.AddRange(jobs.Select(j => (j.Key, j.LastWriteUtc)));
@@ -432,6 +436,10 @@ public sealed class QueueController
                 tx.SetLastWriteTimeUtc(job.LblPath, change.NewUtc, reason);
         }
     }
+
+    /// <summary>Zuletzt vergebene Production ID: höher als alles an der Maschine, nie unter <see cref="FirstProductionId"/>.</summary>
+    private static long LastUsedProductionId(QueueSnapshot snap, LayoutDocument doc) =>
+        Math.Max(Math.Max(doc.LastProductionId, snap.Scan.Machine.Select(j => j.ProductionId).DefaultIfEmpty().Max()), FirstProductionId - 1);
 
     private OperationResult RollbackAndFail(FileTransaction tx, FileOperationException ex)
     {

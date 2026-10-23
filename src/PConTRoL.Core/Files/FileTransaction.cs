@@ -17,9 +17,9 @@ public sealed class FileOperationException(string message, bool isLocked, Except
 }
 
 /// <summary>
-/// Führt Verschieben und Datum-Setzen aus und kann alles wieder rückgängig machen.
-/// Es wird NIE eine Datei gelöscht oder überschrieben. Am Inhalt wird nur die Production ID im Kopf
-/// der .hop gesetzt (<see cref="SetProductionId"/>), sonst nichts.
+/// Führt Verschieben, Kopieren und Datum-Setzen aus und kann alles wieder rückgängig machen.
+/// Es wird NIE eine vorhandene Datei gelöscht oder überschrieben (Rückgängig entfernt höchstens eine eigene Kopie).
+/// Am Inhalt wird nur die Production ID im Kopf der .hop gesetzt (<see cref="SetProductionId"/>), sonst nichts.
 /// </summary>
 public sealed class FileTransaction
 {
@@ -81,6 +81,23 @@ public sealed class FileTransaction
         {
             if (File.Exists(tmp)) File.Delete(tmp);
         }
+    }
+
+    /// <summary>
+    /// Legt eine Kopie an (Kanban: das Original bleibt liegen). Das Ziel darf noch nicht existieren.
+    /// Rückgängig wird nur diese eigene Kopie wieder entfernt – nie eine fremde Datei.
+    /// </summary>
+    public void Copy(string source, string destination, string reason)
+    {
+        if (!File.Exists(source))
+            throw new FileOperationException($"Datei nicht gefunden: {source}", isLocked: false);
+        if (File.Exists(destination))
+            throw new FileOperationException($"Ziel existiert bereits, es wird nichts überschrieben: {destination}", isLocked: false);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        Retry(() => File.Copy(source, destination, overwrite: false), source);
+        _undo.Add(($"Kopie entfernen: {Path.GetFileName(destination)}", () => File.Delete(destination)));
+        _log?.Write("KOPIERT", Path.GetFileName(source), $"{reason}: {source} -> {destination}");
     }
 
     public void Move(string source, string destination, string reason)

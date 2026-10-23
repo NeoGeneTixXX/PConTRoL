@@ -37,7 +37,12 @@
                 <TextBlock x:Name="VersionText" FontSize="14" Foreground="{StaticResource FgDim}" VerticalAlignment="Bottom"
                            Margin="8,0,0,4" ToolTip="Installierte Programmversion" />
                 <TextBlock x:Name="FolderText" FontSize="14" Foreground="{StaticResource FgDim}" VerticalAlignment="Center"
-                           Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
+                           Margin="16,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="260" />
+                <!-- Kanban-Kacheln: Klick schickt Kopien als Gruppe an die Maschine (Einstellungen → Kanban-Kacheln). -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="16,0,8,0"
+                              VerticalAlignment="Center">
+                    <StackPanel x:Name="KanbanBar" Orientation="Horizontal" />
+                </ScrollViewer>
             </DockPanel>
         </Border>
         <Border x:Name="UpdateBanner" Background="{StaticResource AccentDim}" Padding="12,6" Visibility="Collapsed">

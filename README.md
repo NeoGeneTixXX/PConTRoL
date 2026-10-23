@@ -83,6 +83,14 @@ PConTRoL kann auf mehreren Rechnern laufen:
 
 Eine gelbe Linie bzw. ein gelber Rahmen zeigt vor dem Loslassen, wohin der Auftrag fällt.
 
+**Kanban-Kacheln:** feste Zusammenstellungen von Platten, die immer wieder gebraucht werden (z. B. „Regal 80“).
+- Anlegen unter *Einstellungen → Kanban-Kacheln → Neue Kachel*: Namen eingeben (= Name der Gruppe an der Maschine), .hop-Dateien von irgendwo auswählen.
+  Die Dateien werden mit .lbl und .jpg nach `<Hauptordner>\Kanban\<Kachel>\` **verschoben**. Dort liegen sie geschützt vor versehentlichem Verschieben oder Löschen.
+- Ein Klick auf die Kachel oben in der Kopfzeile schickt nach kurzer Rückfrage **Kopien** aller Platten als Gruppe ans Ende der Maschine – mit neuer Production ID, wie beim normalen Schicken.
+  Die Originale bleiben unverändert, die Kachel ist beliebig oft nutzbar. Liegt eine Kopie noch unfertig an der Maschine, wird nicht nochmal geschickt.
+- Umbenennen, Platten hinzufügen und Auflösen ebenfalls in den Einstellungen; das wirkt sofort. Beim Auflösen wird nichts gelöscht: Die Platten kommen als Nest-Job in den Vorrat (`_NestResult\<Kachel>\`).
+- Kacheln gelten für alle Rechner (`<Hauptordner>\_PConTRoL\kanban.json`). In der Statistik zählt jede Fertigung einer Kanban-Platte einzeln.
+
 **Automatik:** Der Schalter gilt für alle Rechner (gespeichert in `<Hauptordner>\_PConTRoL\reihenfolge.json`).
 Nachgefüllt wird von dem Rechner, auf dem PConTRoL zuerst die 60 Sekunden voll hat; die Sperrdatei `automatik.lock` verhindert doppeltes Schicken.
 Unter dem Schalter steht, wie lange es noch dauert. Schlägt ein Versuch fehl (z. B. Datei gesperrt), steht das dort in Rot, und nach weiteren 60 Sekunden wird es erneut versucht.

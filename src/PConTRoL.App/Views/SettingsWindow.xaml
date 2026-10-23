@@ -111,6 +111,15 @@
                        Text="Links steht der Originalname. Eigenen Namen eintragen, mit ▲/▼ die Reihenfolge ändern, Haken weg = Spalte ausblenden. Teile, die in allen angezeigten Spalten gleich sind, werden zu einer Zeile zusammengefasst; die Stückzahl steht in der festen ersten Spalte „ST“." />
         </DockPanel>
 
+        <TextBlock Text="Kanban-Kacheln (oben in der Kopfzeile)" Style="{StaticResource Section}" />
+        <StackPanel x:Name="KanbanPanel" />
+        <DockPanel Margin="140,4,0,0">
+            <Button x:Name="NewTileButton" DockPanel.Dock="Right" Content="＋ Neue Kachel …" Click="OnNewTile" FontSize="14" Padding="12,4"
+                    VerticalAlignment="Top" />
+            <TextBlock x:Name="KanbanHint" FontSize="13" Foreground="{StaticResource FgDim}" TextWrapping="Wrap" VerticalAlignment="Center"
+                       Text="Beim Anlegen werden die gewählten .hop-Dateien (mit .lbl und .jpg) in den Ordner Kanban im Hauptordner verschoben. Ein Klick auf die Kachel schickt Kopien als Gruppe ans Ende der Maschine – beliebig oft. Änderungen an Kacheln gelten sofort, auch ohne „Speichern“." />
+        </DockPanel>
+
         <TextBlock Text="Programm" Style="{StaticResource Section}" />
         <CheckBox x:Name="AutostartBox" Content="Mit Windows starten (im Tray)" />
         <Grid Margin="0,10,0,0">

@@ -16,11 +16,14 @@ public partial class SettingsWindow : Window
     private readonly Action<double?> _previewMainScale;
     private readonly bool _popupWasVisible;
     private readonly UpdateService? _updates;
+    private readonly QueueController? _controller;
     private bool _loading = true;
 
     /// <param name="previewMainScale">Vorschau der Größe im Hauptfenster; null = gespeicherten Wert wiederherstellen.</param>
     /// <param name="updates">Für „Nach Updates suchen“; null = nicht verfügbar.</param>
-    public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale, UpdateService? updates = null)
+    /// <param name="controller">Für die Kanban-Kacheln (gespeicherter Hauptordner); null = kein Hauptordner.</param>
+    public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale,
+        UpdateService? updates = null, QueueController? controller = null)
     {
         InitializeComponent();
         _original = current.Clone();
@@ -28,8 +31,10 @@ public partial class SettingsWindow : Window
         _popup = popup;
         _previewMainScale = previewMainScale;
         _updates = updates;
+        _controller = controller;
         _popupWasVisible = popup.IsVisible;
         ShowUpdateState();
+        BuildKanbanRows();
 
         MainFolderBox.Text = _edit.MainFolder;
         MainScaleSlider.Value = Math.Round(_edit.MainScale * 100);
@@ -241,6 +246,135 @@ public partial class SettingsWindow : Window
         OnSave(sender, e);
         if (DialogResult != true) InstallUpdateRequested = false;
     }
+
+    // ---------- Kanban-Kacheln (wirken sofort) ----------
+
+    /// <summary>Wurde an den Kacheln etwas geändert? Dann liest das Hauptfenster danach gleich neu ein.</summary>
+    public bool KanbanChanged { get; private set; }
+
+    private void BuildKanbanRows()
+    {
+        KanbanPanel.Children.Clear();
+        if (_controller == null)
+        {
+            NewTileButton.IsEnabled = false;
+            KanbanHint.Text = "Kanban-Kacheln gibt es erst, wenn ein Hauptordner gespeichert ist.";
+            return;
+        }
+
+        IReadOnlyList<Core.Kanban.KanbanTile> tiles;
+        try
+        {
+            tiles = _controller.KanbanTiles();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            KanbanHint.Text = "Kacheln konnten nicht gelesen werden: " + ex.Message;
+            return;
+        }
+
+        foreach (var tile in tiles)
+        {
+            var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var i = 0; i < 3; i++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var name = new TextBlock
+            {
+                Text = $"{tile.Name}   ({Plural(tile.Files.Count)})",
+                FontSize = 15,
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = $"Ordner: {Path.Combine(_controller.Paths.Kanban, tile.Folder)}\n" + string.Join("\n", tile.Files),
+            };
+            Grid.SetColumn(name, 1);
+            grid.Children.Add(name);
+
+            var id = tile.Id;
+            var currentName = tile.Name;
+            AddButton(grid, 2, "Umbenennen …", async () =>
+            {
+                var newName = InputDialog.Ask(this, "Kachel umbenennen", "Neuer Name (= Name der Gruppe an der Maschine):", currentName);
+                if (newName != null) await RunKanban(c => c.RenameKanbanTile(id, newName));
+            });
+            AddButton(grid, 3, "Platten hinzufügen …", async () =>
+            {
+                var files = PickHops($"Platten zur Kachel „{currentName}“ hinzufügen");
+                if (files == null) return;
+                if (!ConfirmMove(files.Count, Path.Combine(_controller.Paths.Kanban, tile.Folder))) return;
+                await RunKanban(c => c.AddToKanbanTile(id, files));
+            });
+            AddButton(grid, 4, "Auflösen", async () =>
+            {
+                var answer = MessageBox.Show(this,
+                    $"Kachel „{currentName}“ auflösen?\n\nGelöscht wird nichts: Die {Plural(tile.Files.Count)} kommen in den Vorrat " +
+                    $"({Path.Combine(_controller.Paths.NestResult, tile.Folder)}).",
+                    "Kachel auflösen", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer == MessageBoxResult.Yes) await RunKanban(c => c.RemoveKanbanTile(id));
+            });
+            KanbanPanel.Children.Add(grid);
+        }
+    }
+
+    private static void AddButton(Grid grid, int column, string text, Func<Task> action)
+    {
+        var button = new Button { Content = text, FontSize = 14, Padding = new Thickness(10, 3, 10, 3) };
+        button.Click += async (_, _) => await action();
+        Grid.SetColumn(button, column);
+        grid.Children.Add(button);
+    }
+
+    private async void OnNewTile(object sender, RoutedEventArgs e)
+    {
+        if (_controller == null) return;
+        var name = InputDialog.Ask(this, "Neue Kanban-Kachel", "Name der Kachel (= Name der Gruppe an der Maschine):", "Neue Kachel");
+        if (name == null) return;
+        var files = PickHops($"Platten für die Kachel „{name}“ auswählen");
+        if (files == null) return;
+        if (!ConfirmMove(files.Count, Path.Combine(_controller.Paths.Kanban, name))) return;
+        await RunKanban(c => c.CreateKanbanTile(name, files));
+    }
+
+    private List<string>? PickHops(string title)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = title,
+            Filter = "Nest-Programme (*.hop)|*.hop",
+            Multiselect = true,
+        };
+        if (_controller != null && Directory.Exists(_controller.Paths.NestResult)) dlg.InitialDirectory = _controller.Paths.NestResult;
+        return dlg.ShowDialog(this) == true && dlg.FileNames.Length > 0 ? dlg.FileNames.ToList() : null;
+    }
+
+    private bool ConfirmMove(int count, string folder) =>
+        MessageBox.Show(this,
+            $"{Plural(count)} (mit .lbl und .jpg) werden nach\n{folder}\nverschoben.\n\nDort liegen sie geschützt; an die Maschine gehen immer Kopien.",
+            "Kanban", MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK;
+
+    private async Task RunKanban(Func<QueueController, OperationResult> op)
+    {
+        if (_controller == null) return;
+        var controller = _controller;
+        KanbanPanel.IsEnabled = NewTileButton.IsEnabled = false;
+        try
+        {
+            var result = await Task.Run(() => op(controller));
+            if (!result.Success)
+                MessageBox.Show(this, result.Message, "Nicht möglich", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else if (result.Changed)
+                KanbanChanged = true;
+        }
+        finally
+        {
+            KanbanPanel.IsEnabled = NewTileButton.IsEnabled = true;
+            BuildKanbanRows();
+        }
+    }
+
+    private static string Plural(int n) => n == 1 ? "1 Platte" : $"{n} Platten";
 
     // ---------- Teileliste ----------
 

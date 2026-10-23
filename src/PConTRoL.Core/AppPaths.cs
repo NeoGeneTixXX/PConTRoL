@@ -23,6 +23,17 @@ public sealed class AppPaths
     public string Shared { get; }
     public string LayoutFile => Path.Combine(Shared, "reihenfolge.json");
 
+    /// <summary>Originale der Kanban-Kacheln (je Kachel ein Unterordner). Von hier gehen nur Kopien an die Maschine.</summary>
+    public string Kanban => Path.Combine(Root, KanbanFolderName);
+
+    public const string KanbanFolderName = "Kanban";
+
+    /// <summary>Kacheldefinitionen (für alle Rechner gemeinsam).</summary>
+    public string KanbanFile => Path.Combine(Shared, "kanban.json");
+
+    /// <summary>Zwischenablage für Kanban-Kopien, bevor sie nach _Input wandern (gleiches Laufwerk = Verschieben ist atomar).</summary>
+    public string KanbanStaging => Path.Combine(Shared, "kanban-tmp");
+
     /// <summary>Sperrdatei, damit die Automatik nicht auf zwei Rechnern gleichzeitig nachfüllt.</summary>
     public string AutoLockFile => Path.Combine(Shared, "automatik.lock");
     public string LogFolder => Shared;

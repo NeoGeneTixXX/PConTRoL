@@ -7,7 +7,7 @@ public sealed class BoardRecord
     public const string SourceArchive = "Archiv";
     public const string NoMaterial = "(ohne Material)";
 
-    /// <summary>SHA-256 der .lbl. Gleiche Platte = gleiche Id, egal ob live erfasst oder aus dem Archiv.</summary>
+    /// <summary>SHA-256 der .lbl, ggf. mit Production ID (siehe <see cref="FromJob"/>). Gleiche Id = dieselbe Fertigung.</summary>
     public string Id { get; set; } = "";
 
     /// <summary>Zeitpunkt der Bearbeitung (live: als die Maschine fertig war; Archiv: Dateidatum).</summary>
@@ -51,6 +51,11 @@ public sealed class BoardRecord
         };
     }
 
+    /// <summary>
+    /// Id = SHA-256 der .lbl, mit Production ID dahinter: So wird eine Kanban-Platte, die mehrmals gefertigt wird
+    /// (gleiche .lbl, aber jedes Mal neue Production ID), jedes Mal gezählt – mehrere Rechner zählen sie trotzdem nur einmal.
+    /// </summary>
     public static BoardRecord? FromJob(JobInfo job, string source, DateTime timeUtc) =>
-        Create(job.ContentHash, timeUtc, job.Material, job.DimX, job.DimY, job.UsedArea, job.NestJob, job.Key, source);
+        Create(job.ContentHash is { } hash && job.ProductionId > 0 ? $"{hash}-{job.ProductionId}" : job.ContentHash,
+            timeUtc, job.Material, job.DimX, job.DimY, job.UsedArea, job.NestJob, job.Key, source);
 }
