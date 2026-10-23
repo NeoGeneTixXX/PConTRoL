@@ -1,6 +1,9 @@
 using System.IO;
 using System.Reflection;
+using System.Net.Http;
 using System.Windows.Threading;
+using PConTRoL.Core;
+using PConTRoL.Core.Updates;
 using Velopack;
 using Velopack.Sources;
 
@@ -20,8 +23,11 @@ public enum UpdateCheckState
 public sealed record UpdateCheckResult(UpdateCheckState State, string? Version = null, string? Error = null);
 
 /// <summary>
-/// Automatische Updates über GitHub Releases (Velopack).
+/// Automatische Updates über GitHub Releases (Velopack), mit Ausweichweg über den Hauptordner.
 ///
+/// - Rechner, die GitHub erreichen, legen das neueste Paket zusätzlich in &lt;Hauptordner&gt;\_PConTRoL\updates\ ab.
+///   Rechner ohne funktionierende GitHub-Verbindung (z. B. Maschinen-PC mit veralteten Stammzertifikaten,
+///   Fehler „PartialChain“) holen das Update dann von dort.
 /// - Prüft beim Start und dann alle <see cref="CheckInterval"/> im Hintergrund.
 /// - Lädt ein neues Release still herunter, spielt es aber NIE selbst ein:
 ///   nur nach Bestätigung (<see cref="ApplyAndRestart"/>) oder beim nächsten Programmstart
@@ -35,7 +41,13 @@ public sealed class UpdateService
 
     private readonly UpdateManager _manager = new(new GithubSource(RepoUrl, null, false));
     private readonly DispatcherTimer _timer = new() { Interval = CheckInterval };
+    private readonly Func<string?> _mainFolder;
     private Task<UpdateCheckResult>? _running;
+    private UpdateManager? _pendingManager;
+    private int _mirroring;
+
+    /// <param name="mainFolder">Aktueller Hauptordner (für die Update-Ablage in _PConTRoL\updates).</param>
+    public UpdateService(Func<string?>? mainFolder = null) => _mainFolder = mainFolder ?? (() => null);
 
     /// <summary>Heruntergeladenes, noch nicht eingespieltes Update (oder null).</summary>
     public VelopackAsset? Pending { get; private set; }
@@ -81,29 +93,120 @@ public sealed class UpdateService
         }
     }
 
+    /// <summary>
+    /// Erst GitHub. Klappt das, wird das neueste Paket zusätzlich im Hauptordner abgelegt (für Rechner ohne
+    /// funktionierende GitHub-Verbindung). Klappt GitHub nicht, wird die Ablage im Hauptordner benutzt.
+    /// </summary>
     private async Task<UpdateCheckResult> RunCheckAsync()
     {
+        Exception githubError;
         try
         {
-            var info = await _manager.CheckForUpdatesAsync();
-            if (info == null)
-                return Pending != null ? new(UpdateCheckState.Ready, Pending.Version.ToString()) : new(UpdateCheckState.UpToDate);
-
-            var target = info.TargetFullRelease;
-            if (Pending?.Version == target.Version) return new(UpdateCheckState.Ready, target.Version.ToString());
-
-            await _manager.DownloadUpdatesAsync(info);
-            Pending = target;
-            UpdateLog.Write($"Version {target.Version} heruntergeladen, wartet auf Bestätigung oder nächsten Start.");
-            UpdateLog.MarkAttempt(target.Version.ToString());
-            UpdateReady?.Invoke(this, target);
-            return new(UpdateCheckState.Ready, target.Version.ToString());
+            var result = await CheckWithAsync(_manager, "GitHub");
+            _ = Task.Run(MirrorToMainFolderAsync); // Download + Prüfsumme (~70 MB) nicht im UI-Thread
+            return result;
         }
         catch (Exception ex)
         {
-            // Kein Netz, GitHub nicht erreichbar, Rate-Limit … – einfach beim nächsten Mal wieder versuchen.
-            UpdateLog.Write("Update-Prüfung fehlgeschlagen", ex);
-            return new(UpdateCheckState.Failed, Error: Describe(ex));
+            // Kein Netz, Zertifikat, Rate-Limit … – dann die Ablage im Hauptordner versuchen.
+            githubError = ex;
+            UpdateLog.Write("Update-Prüfung über GitHub fehlgeschlagen", ex);
+        }
+
+        var folder = MirrorFolder();
+        if (folder == null || !File.Exists(Path.Combine(folder, UpdateFeed.FeedFileName)))
+            return new(UpdateCheckState.Failed,
+                Error: Describe(githubError) + " Im Hauptordner (_PConTRoL\\updates) liegt auch kein Update.");
+        try
+        {
+            return await CheckWithAsync(new UpdateManager(new SimpleFileSource(new DirectoryInfo(folder))), "Hauptordner");
+        }
+        catch (Exception ex)
+        {
+            UpdateLog.Write("Update über den Hauptordner fehlgeschlagen", ex);
+            return new(UpdateCheckState.Failed, Error: Describe(githubError) + " Hauptordner: " + Describe(ex));
+        }
+    }
+
+    /// <summary>Prüft eine Quelle und lädt ein neues Release herunter. Fehler werden weitergereicht.</summary>
+    private async Task<UpdateCheckResult> CheckWithAsync(UpdateManager manager, string via)
+    {
+        var info = await manager.CheckForUpdatesAsync();
+        if (info == null)
+            return Pending != null ? new(UpdateCheckState.Ready, Pending.Version.ToString()) : new(UpdateCheckState.UpToDate);
+
+        var target = info.TargetFullRelease;
+        if (Pending?.Version == target.Version) return new(UpdateCheckState.Ready, target.Version.ToString());
+
+        await manager.DownloadUpdatesAsync(info);
+        Pending = target;
+        _pendingManager = manager;
+        UpdateLog.Write($"Version {target.Version} über {via} heruntergeladen, wartet auf Bestätigung oder nächsten Start.");
+        UpdateLog.MarkAttempt(target.Version.ToString());
+        UpdateReady?.Invoke(this, target);
+        return new(UpdateCheckState.Ready, target.Version.ToString());
+    }
+
+    private string? MirrorFolder()
+    {
+        var root = _mainFolder();
+        if (string.IsNullOrWhiteSpace(root)) return null;
+        var paths = new AppPaths(root);
+        return paths.IsValid ? UpdateFeed.FolderFor(paths) : null;
+    }
+
+    /// <summary>
+    /// Legt das neueste Komplettpaket (Prüfsumme geprüft) samt passender releases.win.json im Hauptordner ab.
+    /// Läuft im Hintergrund nur auf Rechnern, die GitHub erreichen; Fehler stören nie.
+    /// </summary>
+    private async Task MirrorToMainFolderAsync()
+    {
+        var folder = MirrorFolder();
+        if (folder == null || Interlocked.Exchange(ref _mirroring, 1) == 1) return;
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+            var package = UpdateFeed.LatestFull(await http.GetStringAsync($"{RepoUrl}/releases/latest/download/{UpdateFeed.FeedFileName}"));
+            if (package == null) return;
+
+            Directory.CreateDirectory(folder);
+            var target = Path.Combine(folder, package.FileName);
+            if (!File.Exists(target) || new FileInfo(target).Length != package.Size)
+            {
+                var tmp = target + ".tmp-" + Environment.MachineName;
+                await using (var source = await http.GetStreamAsync($"{RepoUrl}/releases/download/v{package.Version.ToString(3)}/{package.FileName}"))
+                await using (var file = File.Create(tmp))
+                    await source.CopyToAsync(file);
+                if (!UpdateFeed.Matches(tmp, package))
+                {
+                    File.Delete(tmp);
+                    UpdateLog.Write($"Ablage im Hauptordner: Prüfsumme von {package.FileName} stimmt nicht – verworfen.");
+                    return;
+                }
+                File.Move(tmp, target, overwrite: true);
+                UpdateLog.Write($"Version {package.Version.ToString(3)} im Hauptordner abgelegt ({folder}).");
+            }
+
+            var feed = Path.Combine(folder, UpdateFeed.FeedFileName);
+            if (!File.Exists(feed) || File.ReadAllText(feed) != package.FeedJson)
+            {
+                var tmpFeed = feed + ".tmp-" + Environment.MachineName;
+                File.WriteAllText(tmpFeed, package.FeedJson);
+                File.Move(tmpFeed, feed, overwrite: true);
+            }
+
+            // Ältere selbst abgelegte Pakete wegräumen (nur .nupkg in diesem Ordner).
+            foreach (var old in Directory.EnumerateFiles(folder, "*-full.nupkg")
+                         .Where(f => !string.Equals(Path.GetFileName(f), package.FileName, StringComparison.OrdinalIgnoreCase)))
+                File.Delete(old);
+        }
+        catch (Exception ex)
+        {
+            UpdateLog.Write("Ablage des Updates im Hauptordner fehlgeschlagen", ex);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _mirroring, 0);
         }
     }
 
@@ -119,7 +222,7 @@ public sealed class UpdateService
         {
             UpdateLog.Write($"Update auf {Pending.Version} bestätigt, PConTRoL wird neu gestartet.");
             UpdateLog.MarkAttempt(Pending.Version.ToString());
-            _manager.WaitExitThenApplyUpdates(Pending, silent: false, restart: true, []);
+            (_pendingManager ?? _manager).WaitExitThenApplyUpdates(Pending, silent: false, restart: true, []);
             return true;
         }
         catch (Exception ex)

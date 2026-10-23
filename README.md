@@ -40,6 +40,11 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
     Läuft gerade eine Aktion (Verschieben, Datum setzen), wird nichts eingespielt. Dann einfach danach noch einmal klicken.
   - **Später**: Das Update wird beim **nächsten Programmstart** eingespielt.
   - Das Tray-Menü zeigt zusätzlich den Eintrag *Neue Version … installieren*.
+- **Ausweichweg über den Hauptordner:** Jeder Rechner, der GitHub erreicht, legt das neueste Paket (Prüfsumme geprüft) zusätzlich in
+  `<Hauptordner>\_PConTRoL\updates\` ab. Rechner, bei denen GitHub nicht klappt, holen das Update von dort.
+  Typischer Fall: Maschinen-PC ohne Windows Update, Fehler **„PartialChain“** (es fehlen Stammzertifikate wie
+  *USERTrust ECC Certification Authority* oder *ISRG Root X1*). Ohne einen solchen Rechner kann man auch von Hand
+  `releases.win.json` und `PConTRoL-<Version>-full.nupkg` von der Release-Seite in diesen Ordner kopieren.
 - **Von Hand:** *Einstellungen → Programm → Nach Updates suchen*. Dort steht auch die installierte Version.
   Ist ein Update da, erscheint **Jetzt installieren**: Die Einstellungen werden gespeichert, dann läuft das Update wie oben.
 - Ein Update wird **nie automatisch während der Arbeit** eingespielt.

@@ -65,7 +65,7 @@ public partial class App : Application
         status.PropertyChanged += (_, _) => _tray.SetToolTip("PConTRoL – läuft: " + status.CurrentName);
 
         // Vor dem ersten Öffnen der Einstellungen, damit dort „Nach Updates suchen“ schon funktioniert.
-        _updates = new UpdateService();
+        _updates = new UpdateService(() => _main?.Settings.MainFolder);
         _updates.UpdateReady += (_, asset) =>
         {
             var version = asset.Version.ToString();
