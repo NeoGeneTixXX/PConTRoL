@@ -69,6 +69,8 @@ PConTRoL kann auf mehreren Rechnern laufen:
 | Auf-/Zuklappen | Auf ▶/▼ klicken oder die Gruppenzeile doppelklicken |
 | Spalten | Rechtsklick auf die Spaltenköpfe: ein- und ausblenden. Ziehen: Reihenfolge (z. B. *Prio* nach vorne), Rand ziehen: Breite. Eine Nummernspalte gibt es nicht: An der Maschine läuft es immer von oben nach unten |
 | Spalten der Teileliste | *Einstellungen → Teileliste*: eigene Namen, Reihenfolge (▲/▼) und welche Spalten sichtbar sind. Ziehen am Spaltenkopf unten wird ebenfalls gespeichert |
+| Gleiche Teile | In der Teileliste werden Teile, die in **allen angezeigten Spalten** gleich sind, zu einer Zeile zusammengefasst. Die Stückzahl steht in der festen ersten Spalte **ST** |
+| Einstellungsfenster | Frei in der Größe veränderbar (Rand oder Greifer unten rechts ziehen); die Größe wird gemerkt. Der Inhalt folgt *Größe → Programmfenster* |
 | Vollbild | **F11** oder Button *Vollbild* |
 | Sofort neu einlesen | **F5**. Sonst liest das Programm alle 3 Sekunden automatisch neu ein |
 

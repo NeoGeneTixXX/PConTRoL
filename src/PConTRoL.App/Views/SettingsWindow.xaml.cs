@@ -41,7 +41,7 @@ public partial class SettingsWindow : Window
         BuildPartColumnRows();
         UpdateSwatches();
         _loading = false;
-        MaxHeight = SystemParameters.WorkArea.Height;
+        ApplyInitialSize(current);
 
         // Live-Vorschau: Pop-up während der Einstellungen anzeigen.
         Loaded += (_, _) =>
@@ -134,6 +134,44 @@ public partial class SettingsWindow : Window
         var light = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 140;
         button.Foreground = light ? Brushes.Black : Brushes.White;
         button.Content = "#" + hex.TrimStart('#')[^6..];
+    }
+
+    // ---------- Größe ----------
+
+    /// <summary>Größe beim Schließen (für das nächste Öffnen), egal ob gespeichert oder abgebrochen.</summary>
+    public Size LastSize { get; private set; }
+
+    /// <summary>
+    /// Inhalt folgt der eingestellten Programmgröße (wie beim Öffnen gespeichert). Die Fenstergröße ist frei
+    /// ziehbar und wird gemerkt; ohne gemerkte Größe passt sich die Höhe dem Inhalt an.
+    /// </summary>
+    private void ApplyInitialSize(UserSettings current)
+    {
+        var scale = UserSettings.ClampScale(current.MainScale);
+        if (Math.Abs(scale - 1) > 0.001)
+        {
+            SettingsRoot.LayoutTransform = new ScaleTransform(scale, scale);
+            Width *= scale;
+            MinWidth *= scale;
+        }
+
+        var area = SystemParameters.WorkArea;
+        MaxHeight = area.Height;
+        if (double.IsFinite(current.SettingsWidth) && double.IsFinite(current.SettingsHeight))
+        {
+            SizeToContent = SizeToContent.Manual;
+            Width = Math.Clamp(current.SettingsWidth, MinWidth, Math.Max(MinWidth, area.Width));
+            Height = Math.Clamp(current.SettingsHeight, MinHeight, Math.Max(MinHeight, area.Height));
+        }
+        else
+        {
+            Width = Math.Min(Width, area.Width);
+        }
+
+        // WPF stellt SizeToContent auf Manual, sobald man das Fenster von Hand zieht – nur dann merken.
+        Closing += (_, _) => LastSize = SizeToContent == SizeToContent.Manual
+            ? new Size(ActualWidth, ActualHeight)
+            : new Size(double.NaN, double.NaN);
     }
 
     // ---------- Update ----------

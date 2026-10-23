@@ -1,8 +1,8 @@
 <Window x:Class="PConTRoL.App.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PConTRoL – Einstellungen" Width="760" SizeToContent="Height"
-        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Title="PConTRoL – Einstellungen" Width="760" SizeToContent="Height" MinWidth="560" MinHeight="320"
+        ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
         Background="{StaticResource PanelBg}" Foreground="{StaticResource Fg}" ShowInTaskbar="False">
     <Window.Resources>
         <Style x:Key="Section" TargetType="TextBlock">
@@ -23,8 +23,8 @@
         </Style>
     </Window.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="22,10,22,18">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+    <StackPanel x:Name="SettingsRoot" Margin="22,10,22,18">
         <TextBlock Text="Ordner" Style="{StaticResource Section}" />
         <Grid>
             <Grid.ColumnDefinitions>
@@ -107,7 +107,7 @@
             <Button DockPanel.Dock="Right" Content="Standard" Click="OnResetPartColumns" FontSize="14" Padding="12,4"
                     ToolTip="Ursprüngliche Namen und Reihenfolge, alle Spalten sichtbar" />
             <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" TextWrapping="Wrap" VerticalAlignment="Center"
-                       Text="Links steht der Originalname. Eigenen Namen eintragen, mit ▲/▼ die Reihenfolge ändern, Haken weg = Spalte ausblenden." />
+                       Text="Links steht der Originalname. Eigenen Namen eintragen, mit ▲/▼ die Reihenfolge ändern, Haken weg = Spalte ausblenden. Teile, die in allen angezeigten Spalten gleich sind, werden zu einer Zeile zusammengefasst; die Stückzahl steht in der festen ersten Spalte „ST“." />
         </DockPanel>
 
         <TextBlock Text="Programm" Style="{StaticResource Section}" />

@@ -8,20 +8,50 @@ public sealed class PartColumnSetting
     public bool Visible { get; set; } = true;
 }
 
+/// <summary>Eine Zeile der Teileliste: gleiche Teile zusammengefasst, Count = Stückzahl (Spalte „ST“).</summary>
+public sealed record PartRow(int Count, string RdNumber, string Description, string Article, string Size, string Number);
+
 /// <summary>Die möglichen Spalten der Teileliste unten im Hauptfenster (Daten aus der .lbl).</summary>
 public static class PartColumnCatalog
 {
+    /// <summary>Feste erste Spalte mit der Stückzahl; nicht einstellbar.</summary>
+    public const string CountHeader = "ST";
+
+    /// <param name="Path">Eigenschaft in <see cref="PartRow"/> (für die Bindung).</param>
     /// <param name="Width">Breite in Pixeln; null = füllt den restlichen Platz.</param>
-    public sealed record Def(string Key, string DefaultHeader, string Path, double? Width);
+    public sealed record Def(string Key, string DefaultHeader, string Path, double? Width, Func<PartInfo, string> Value);
 
     public static readonly IReadOnlyList<Def> All =
     [
-        new("rd", "RD-Nr.", nameof(PartInfo.RdNumber), 120),
-        new("description", "Bezeichnung", nameof(PartInfo.Description), null),
-        new("article", "Artikel", nameof(PartInfo.Article), 200),
-        new("size", "Maß", nameof(PartInfo.Size), 120),
-        new("number", "Nr.", nameof(PartInfo.Number), 90),
+        new("rd", "RD-Nr.", nameof(PartRow.RdNumber), 120, p => p.RdNumber),
+        new("description", "Bezeichnung", nameof(PartRow.Description), null, p => p.Description),
+        new("article", "Artikel", nameof(PartRow.Article), 200, p => p.Article),
+        new("size", "Maß", nameof(PartRow.Size), 120, p => p.Size),
+        new("number", "Nr.", nameof(PartRow.Number), 90, p => p.Number),
     ];
+
+    /// <summary>
+    /// Fasst Teile zusammen, die in allen angezeigten Spalten gleich sind (Reihenfolge: erstes Vorkommen).
+    /// Ausgeblendete Spalten zählen nicht mit: Was man nicht sieht, unterscheidet die Zeilen auch nicht.
+    /// </summary>
+    public static List<PartRow> Group(IEnumerable<PartInfo> parts, IEnumerable<string> visibleKeys)
+    {
+        var defs = visibleKeys.Select(Find).OfType<Def>().ToList();
+        var rows = new List<(string Signature, PartInfo First, int Count)>();
+        var index = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var part in parts)
+        {
+            var signature = string.Join('\u001f', defs.Select(d => (d.Value(part) ?? "").Trim()));
+            if (index.TryGetValue(signature, out var i))
+            {
+                rows[i] = (signature, rows[i].First, rows[i].Count + 1);
+                continue;
+            }
+            index[signature] = rows.Count;
+            rows.Add((signature, part, 1));
+        }
+        return rows.Select(r => new PartRow(r.Count, r.First.RdNumber, r.First.Description, r.First.Article, r.First.Size, r.First.Number)).ToList();
+    }
 
     public static Def? Find(string key) => All.FirstOrDefault(d => d.Key == key);
 

@@ -56,6 +56,10 @@ public sealed class UserSettings
     public bool WindowMaximized { get; set; } = true;
     public double DetailsHeight { get; set; } = 230;
 
+    /// <summary>Zuletzt gewählte Größe des Einstellungsfensters (NaN = automatisch).</summary>
+    public double SettingsWidth { get; set; } = double.NaN;
+    public double SettingsHeight { get; set; } = double.NaN;
+
     public UserSettings Clone() =>
         JsonSerializer.Deserialize<UserSettings>(JsonSerializer.Serialize(this, SettingsStore.Options), SettingsStore.Options)!;
 }

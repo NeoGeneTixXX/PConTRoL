@@ -585,7 +585,7 @@ public partial class MainWindow : Window, IJobListHost
         {
             DetailTitle.Text = row.Name;
             DetailText.Text = $"Material: {row.Material}\nMaße: {row.Dims}\nTeile gesamt: {row.Parts}";
-            PartsGrid.ItemsSource = row.Members.SelectMany(m => m.Parts).ToList();
+            ShowParts(row.Members.SelectMany(m => m.Parts));
             PreviewImage.Source = null;
             _previewPath = null;
             return;
@@ -609,7 +609,7 @@ public partial class MainWindow : Window, IJobListHost
         if (job.ProductionNumber.Length > 0) lines.Add($"Prod.-Nr.: {job.ProductionNumber}");
         lines.Add($"Dateidatum: {job.LastWriteUtc.ToLocalTime():dd.MM.yyyy HH:mm:ss}");
         DetailText.Text = string.Join("\n", lines);
-        PartsGrid.ItemsSource = job.Parts;
+        ShowParts(job.Parts);
         ShowPreview(FindPreview(job));
     }
 
@@ -692,7 +692,16 @@ public partial class MainWindow : Window, IJobListHost
         var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates);
         if (IsVisible) dlg.Owner = this;
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        if (dlg.ShowDialog() != true) return;
+        var saved = dlg.ShowDialog() == true;
+
+        // Fenstergröße merken, auch bei „Abbrechen“.
+        _settings.SettingsWidth = dlg.Result.SettingsWidth = dlg.LastSize.Width;
+        _settings.SettingsHeight = dlg.Result.SettingsHeight = dlg.LastSize.Height;
+        if (!saved)
+        {
+            SettingsStore.Save(_settings);
+            return;
+        }
 
         var rootChanged = !string.Equals(dlg.Result.MainFolder, _settings.MainFolder, StringComparison.OrdinalIgnoreCase);
         var autostartChanged = dlg.Result.StartWithWindows != _settings.StartWithWindows;
@@ -702,6 +711,7 @@ public partial class MainWindow : Window, IJobListHost
         Popup.ApplyLook(_settings);
         ApplyScale();
         ApplyPartColumns();
+        UpdateDetails(); // Zusammenfassen hängt von den sichtbaren Spalten ab
         if (rootChanged) ApplyRoot();
 
         // „Jetzt installieren“ in den Einstellungen: erst speichern (oben), dann wie der Update-Hinweis.
@@ -713,6 +723,20 @@ public partial class MainWindow : Window, IJobListHost
     {
         PartsGrid.Columns.Clear();
         _partColumnKeys.Clear();
+
+        // Feste erste Spalte: Stückzahl gleicher Teile (nicht einstellbar, nicht verschiebbar).
+        var right = new Style(typeof(TextBlock));
+        right.Setters.Add(new Setter(TextBlock.TextAlignmentProperty, TextAlignment.Right));
+        PartsGrid.Columns.Add(new DataGridTextColumn
+        {
+            Header = PartColumnCatalog.CountHeader,
+            Binding = new System.Windows.Data.Binding(nameof(PartRow.Count)),
+            Width = new DataGridLength(55),
+            CanUserReorder = false,
+            ElementStyle = right,
+        });
+        PartsGrid.FrozenColumnCount = 1;
+
         foreach (var setting in _settings.PartColumns.Where(c => c.Visible))
         {
             if (PartColumnCatalog.Find(setting.Key) is not { } def) continue;
@@ -730,9 +754,22 @@ public partial class MainWindow : Window, IJobListHost
     /// <summary>Spalten unten am Kopf verschoben: neue Reihenfolge übernehmen (ausgeblendete bleiben an ihrem Platz).</summary>
     private void CapturePartColumnOrder()
     {
-        var shown = PartsGrid.Columns.OrderBy(c => c.DisplayIndex).Select(c => _partColumnKeys[c]);
+        // Die ST-Spalte bleibt immer vorne.
+        var count = PartsGrid.Columns.FirstOrDefault(c => !_partColumnKeys.ContainsKey(c));
+        if (count is { DisplayIndex: not 0 }) count.DisplayIndex = 0;
+
+        var shown = PartsGrid.Columns.OrderBy(c => c.DisplayIndex)
+            .Where(_partColumnKeys.ContainsKey)
+            .Select(c => _partColumnKeys[c]);
         _settings.PartColumns = PartColumnCatalog.Reorder(_settings.PartColumns, shown);
         SettingsStore.Save(_settings);
+    }
+
+    /// <summary>Teileliste füllen: gleiche Teile (alle angezeigten Spalten gleich) als eine Zeile mit Stückzahl.</summary>
+    private void ShowParts(IEnumerable<PartInfo> parts)
+    {
+        var visible = _settings.PartColumns.Where(c => c.Visible).Select(c => c.Key);
+        PartsGrid.ItemsSource = PartColumnCatalog.Group(parts, visible);
     }
 
     /// <summary>Vergrößert/verkleinert die ganze Oberfläche (Einstellungen → Größe).</summary>
