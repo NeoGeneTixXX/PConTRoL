@@ -137,30 +137,6 @@ public sealed class StatisticsTests : IDisposable
     }
 
     [Fact]
-    public void Archive_import_reads_subfolders_and_skips_known_and_invalid_boards()
-    {
-        var archive = Path.Combine(_root, "Archiv");
-        WriteJob(Path.Combine(archive, "2025", "JobA"), "a_01", "Dekor 12mm", 1000, 1000, (500, 1000));
-        WriteJob(Path.Combine(archive, "2026"), "b_01", "Spanplatte 19mm", 2000, 1000, (1000, 1000), (500, 1000));
-        File.WriteAllText(Path.Combine(archive, "kaputt.lbl"), "[Global]\r\nBoardID=1\r\n");
-        // gleiche Platte noch einmal als Kopie
-        Directory.CreateDirectory(Path.Combine(archive, "Kopie"));
-        File.Copy(Path.Combine(archive, "2025", "JobA", "a_01.lbl"), Path.Combine(archive, "Kopie", "a_01.lbl"));
-
-        var store = new StatisticsStore(Path.Combine(_root, "statistik.jsonl"));
-        var first = ArchiveImporter.Import(archive, store);
-
-        Assert.Equal(new ArchiveImportResult(Files: 4, Added: 2, Known: 1, Invalid: 1), first);
-        var records = store.Load();
-        Assert.All(records, r => Assert.Equal(BoardRecord.SourceArchive, r.Source));
-        Assert.Equal(75, records.Single(r => r.Material == "Spanplatte 19mm").Utilization);
-
-        var again = ArchiveImporter.Import(archive, store);
-        Assert.Equal(0, again.Added);
-        Assert.Equal(3, again.Known);
-    }
-
-    [Fact]
     public void Csv_uses_german_number_format()
     {
         var records = new[] { Record("a", "Dekor; 12mm", 1_000_000, 750_000) };

@@ -5,7 +5,6 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using PConTRoL.App.Services;
 using PConTRoL.Core;
-using PConTRoL.Core.Statistics;
 
 namespace PConTRoL.App.Views;
 
@@ -17,7 +16,6 @@ public partial class SettingsWindow : Window
     private readonly Action<double?> _previewMainScale;
     private readonly bool _popupWasVisible;
     private bool _loading = true;
-    private bool _importing;
 
     /// <param name="previewMainScale">Vorschau der Größe im Hauptfenster; null = gespeicherten Wert wiederherstellen.</param>
     public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale)
@@ -30,7 +28,6 @@ public partial class SettingsWindow : Window
         _popupWasVisible = popup.IsVisible;
 
         MainFolderBox.Text = _edit.MainFolder;
-        ArchiveFolderBox.Text = _edit.ArchiveFolder;
         MainScaleSlider.Value = Math.Round(_edit.MainScale * 100);
         PopupScaleSlider.Value = Math.Round(_edit.PopupScale * 100);
         OpacitySlider.Value = Math.Round(_edit.PopupOpacity * 100);
@@ -134,8 +131,6 @@ public partial class SettingsWindow : Window
 
     private void OnBrowseMain(object sender, RoutedEventArgs e) => Browse(MainFolderBox, "Hauptordner wählen (enthält _Input und _NestResult)");
 
-    private void OnBrowseArchive(object sender, RoutedEventArgs e) => Browse(ArchiveFolderBox, "Archivordner mit bereits bearbeiteten Platten wählen");
-
     private void Browse(TextBox box, string title)
     {
         var dlg = new OpenFolderDialog { Title = title };
@@ -143,58 +138,9 @@ public partial class SettingsWindow : Window
         if (dlg.ShowDialog(this) == true) box.Text = dlg.FolderName;
     }
 
-    /// <summary>Liest den Archivordner einmalig in die Statistik (im Hauptordner) ein.</summary>
-    private async void OnImportArchive(object sender, RoutedEventArgs e)
-    {
-        if (_importing) return;
-        var archive = ArchiveFolderBox.Text.Trim();
-        var main = MainFolderBox.Text.Trim();
-        if (!Directory.Exists(archive))
-        {
-            Warn("Bitte einen vorhandenen Archivordner wählen.");
-            return;
-        }
-        if (main.Length == 0 || !new AppPaths(main).IsValid)
-        {
-            Warn("Bitte zuerst einen gültigen Hauptordner wählen – die Statistik wird dort im Ordner _PConTRoL gespeichert.");
-            return;
-        }
-
-        _importing = true;
-        ImportButton.IsEnabled = false;
-        ImportStatus.Text = "Suche Dateien …";
-        var progress = new Progress<(int Done, int Total)>(p => ImportStatus.Text = $"Lese {p.Done} von {p.Total} …");
-        try
-        {
-            var store = new StatisticsStore(new AppPaths(main).StatisticsFile);
-            var r = await Task.Run(() => ArchiveImporter.Import(archive, store, progress));
-            ImportStatus.Text = r.Files == 0
-                ? "Keine .lbl-Dateien gefunden."
-                : $"{r.Added} Platten neu übernommen, {r.Known} schon vorhanden" + (r.Invalid > 0 ? $", {r.Invalid} nicht auswertbar." : ".");
-            _edit.ArchiveFolder = archive;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            ImportStatus.Text = "";
-            Warn("Einlesen fehlgeschlagen: " + ex.Message);
-        }
-        finally
-        {
-            _importing = false;
-            ImportButton.IsEnabled = true;
-        }
-    }
-
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        if (_importing)
-        {
-            Warn("Bitte warten, bis das Einlesen des Archivs fertig ist.");
-            return;
-        }
-
         _edit.MainFolder = MainFolderBox.Text.Trim();
-        _edit.ArchiveFolder = ArchiveFolderBox.Text.Trim();
         _edit.StartWithWindows = AutostartBox.IsChecked == true;
         Preview();
 
@@ -206,6 +152,4 @@ public partial class SettingsWindow : Window
 
         DialogResult = true;
     }
-
-    private void Warn(string text) => MessageBox.Show(this, text, "PConTRoL", MessageBoxButton.OK, MessageBoxImage.Warning);
 }

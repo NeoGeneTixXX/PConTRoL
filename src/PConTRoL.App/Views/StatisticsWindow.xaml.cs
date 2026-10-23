@@ -56,8 +56,7 @@ public partial class StatisticsWindow : Window
             ? "Keine Platten im gewählten Zeitraum"
             : $"Gesamt: {total.Boards} Platten · {materials.Count} Materialien · Ausnutzung {Pct(total.Utilization)} · Verschnitt {Pct(total.Waste)}";
         EmptyText.Text = _all.Count == 0
-            ? "Noch keine fertigen Platten erfasst.\n\nPConTRoL zählt jede Platte, die die Maschine fertig bearbeitet hat. "
-              + "Bereits bearbeitete Platten lassen sich unter Einstellungen → Statistik aus dem Archivordner einlesen."
+            ? "Noch keine fertigen Platten erfasst.\n\nPConTRoL zählt jede Platte, die die Maschine fertig bearbeitet hat."
             : "Im gewählten Zeitraum wurden keine Platten bearbeitet.";
         EmptyText.Visibility = materials.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }

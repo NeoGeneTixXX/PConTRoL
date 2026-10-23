@@ -74,6 +74,13 @@ public sealed class QueueController
         lock (_sync) return RefreshCore();
     }
 
+    /// <summary>
+    /// An der Maschine ist die Reihenfolge fest: Aufträge kommen immer ans Ende, in der Reihenfolge,
+    /// in der sie zur Maschine geschickt werden, und lassen sich dort nicht mehr umsortieren.
+    /// </summary>
+    public const string MachineOrderFixedMessage =
+        "Die Reihenfolge an der Maschine ist fest: Aufträge werden in der Reihenfolge abgearbeitet, in der sie zur Maschine geschickt wurden.";
+
     /// <summary>Drag &amp; Drop oder Pfeil-Buttons: innerhalb einer Seite oder auf die andere Seite.</summary>
     public OperationResult Move(Side from, Side to, Selection selection, DropTarget target)
     {
@@ -82,8 +89,8 @@ public sealed class QueueController
             return Guard(() =>
             {
                 if (from == to)
-                    return Mutate(from, (layout, pinned) => LayoutOps.Move(layout, selection, target, pinned), "Reihenfolge geändert");
-                return from == Side.Stock ? SendToMachine(selection, target) : ReturnToStock(selection, target);
+                    return Mutate(from, (layout, pinned) => LayoutOps.Move(layout, selection, target, pinned));
+                return from == Side.Stock ? SendToMachine(selection) : ReturnToStock(selection, target);
             });
         }
     }
@@ -91,37 +98,37 @@ public sealed class QueueController
     public OperationResult Step(Side side, Selection selection, MoveStep step)
     {
         lock (_sync)
-            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.Step(layout, selection, step, pinned), "Priorität geändert"));
+            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.Step(layout, selection, step, pinned)));
     }
 
     public OperationResult CreateGroup(Side side, string name)
     {
         lock (_sync)
-            return Guard(() => Mutate(side, (layout, _) => LayoutOps.CreateEmptyGroup(layout, name) != null, "Gruppe angelegt"));
+            return Guard(() => Mutate(side, (layout, _) => LayoutOps.CreateEmptyGroup(layout, name) != null));
     }
 
     public OperationResult GroupSelection(Side side, Selection selection, string name)
     {
         lock (_sync)
-            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.GroupSelection(layout, selection, name, pinned) != null, "Gruppe gebildet"));
+            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.GroupSelection(layout, selection, name, pinned) != null));
     }
 
     public OperationResult RenameGroup(Side side, string groupId, string name)
     {
         lock (_sync)
-            return Guard(() => Mutate(side, (layout, _) => LayoutOps.RenameGroup(layout, groupId, name), "Gruppe umbenannt"));
+            return Guard(() => Mutate(side, (layout, _) => LayoutOps.RenameGroup(layout, groupId, name)));
     }
 
     public OperationResult DissolveGroup(Side side, string groupId)
     {
         lock (_sync)
-            return Guard(() => Mutate(side, (layout, _) => LayoutOps.DissolveGroup(layout, groupId), "Gruppe aufgelöst"));
+            return Guard(() => Mutate(side, (layout, _) => LayoutOps.DissolveGroup(layout, groupId)));
     }
 
     public OperationResult RemoveFromGroup(Side side, IReadOnlyList<string> keys)
     {
         lock (_sync)
-            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.RemoveFromGroup(layout, keys, pinned), "Aus Gruppe genommen"));
+            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.RemoveFromGroup(layout, keys, pinned)));
     }
 
     private QueueSnapshot RefreshCore()
@@ -176,8 +183,8 @@ public sealed class QueueController
         }
     }
 
-    /// <summary>Layout-Änderung auf einer Seite. Auf der Maschinenseite werden danach die Daten angepasst.</summary>
-    private OperationResult Mutate(Side side, Func<SideLayout, string?, bool> op, string reason)
+    /// <summary>Layout-Änderung auf einer Seite. Auf der Maschinenseite darf sich nur die Gruppierung ändern, nie die Reihenfolge.</summary>
+    private OperationResult Mutate(Side side, Func<SideLayout, string?, bool> op)
     {
         var snap = RefreshCore();
         var doc = _doc!;
@@ -186,17 +193,7 @@ public sealed class QueueController
         if (!op(layout, pinned)) return OperationResult.NoChange;
 
         if (side == Side.Machine && !layout.Order.SequenceEqual(doc.Machine.Order, StringComparer.OrdinalIgnoreCase))
-        {
-            var tx = new FileTransaction(_retry, _log);
-            try
-            {
-                ApplyMachineOrder(layout.Order, snap, tx, reason);
-            }
-            catch (FileOperationException ex)
-            {
-                return RollbackAndFail(tx, ex);
-            }
-        }
+            return OperationResult.Fail(MachineOrderFixedMessage);
 
         if (side == Side.Stock) doc.Stock = layout;
         else doc.Machine = layout;
@@ -204,7 +201,8 @@ public sealed class QueueController
         return OperationResult.Ok;
     }
 
-    private OperationResult SendToMachine(Selection selection, DropTarget target)
+    /// <summary>Neue Aufträge kommen immer ans Ende der Maschine, in Vorrats-Reihenfolge.</summary>
+    private OperationResult SendToMachine(Selection selection)
     {
         var snap = RefreshCore();
         var doc = _doc!;
@@ -222,12 +220,12 @@ public sealed class QueueController
         var stock = doc.Stock.Clone();
         var machine = doc.Machine.Clone();
         var (keep, carried) = LayoutOps.Extract(stock, selection, keys);
-        LayoutOps.Insert(machine, keys, keep, carried, target, snap.RunningKey);
+        LayoutOps.Insert(machine, keys, keep, carried, DropTarget.End, snap.RunningKey);
 
         var tx = new FileTransaction(_retry, _log);
         try
         {
-            // 1. Daten setzen – bei neuen Aufträgen noch im Vorrat, damit sie in _Input sofort richtig einsortiert sind.
+            // 1. Daten setzen – bei neuen Aufträgen noch im Vorrat, damit sie in _Input sofort ganz unten einsortiert sind.
             ApplyMachineOrder(machine.Order, snap, tx, "Zur Maschine");
 
             // 2. Verschieben: erst .lbl, dann .hop (die Maschine sieht die .hop erst, wenn alles da ist).

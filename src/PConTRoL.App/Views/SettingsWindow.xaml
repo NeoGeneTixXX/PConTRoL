@@ -100,30 +100,6 @@
         <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" Margin="140,4,0,0" TextWrapping="Wrap"
                    Text="Änderungen sind sofort im Pop-up unten rechts zu sehen (Vorschau)." />
 
-        <TextBlock Text="Statistik" Style="{StaticResource Section}" />
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition />
-                <RowDefinition />
-                <RowDefinition />
-            </Grid.RowDefinitions>
-            <TextBlock Text="Archivordner" Style="{StaticResource Label}" />
-            <TextBox x:Name="ArchiveFolderBox" Grid.Column="1" />
-            <Button Grid.Column="2" Content="…" Click="OnBrowseArchive" Padding="12,4" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" FontSize="13" Foreground="{StaticResource FgDim}"
-                       TextWrapping="Wrap" Margin="0,2,0,0"
-                       Text="Ordner mit bereits bearbeiteten Platten (inkl. Unterordner). Wird einmalig eingelesen; schon erfasste Platten werden nicht doppelt gezählt." />
-            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,4,0,0">
-                <Button x:Name="ImportButton" Content="Archiv jetzt einlesen" Click="OnImportArchive" FontSize="14" Margin="0,3,12,3" />
-                <TextBlock x:Name="ImportStatus" FontSize="14" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="380" />
-            </StackPanel>
-        </Grid>
-
         <TextBlock Text="Programm" Style="{StaticResource Section}" />
         <CheckBox x:Name="AutostartBox" Content="Mit Windows starten (im Tray)" />
 

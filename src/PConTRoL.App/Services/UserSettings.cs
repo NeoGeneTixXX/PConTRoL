@@ -17,9 +17,6 @@ public sealed class UserSettings
 {
     public string MainFolder { get; set; } = "";
 
-    /// <summary>Zuletzt gewählter Archivordner für den einmaligen Statistik-Import.</summary>
-    public string ArchiveFolder { get; set; } = "";
-
     /// <summary>Vergrößerung der Programmoberfläche (1.0 = 100 %).</summary>
     public double MainScale { get; set; } = 1.0;
 

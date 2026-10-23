@@ -18,7 +18,7 @@
     <!-- Eigener Main in Program.cs (Velopack muss zuerst laufen) -->
     <StartupObject>PConTRoL.App.Program</StartupObject>
     <!-- Versionsnummer (SemVer). Vor jedem Release erhöhen; das Git-Tag v<Version> muss dazu passen. -->
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Product>PConTRoL</Product>
     <Description>Produktionsreihenfolge für die Nesting-Maschine</Description>
 

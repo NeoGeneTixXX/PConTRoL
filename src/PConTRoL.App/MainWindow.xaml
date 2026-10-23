@@ -85,12 +85,6 @@
                         <TextBlock Text="ans Ende" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource ArrowButton}" Click="OnSendNext" ToolTip="Markierte Aufträge direkt nach dem laufenden Auftrag einreihen">
-                    <StackPanel>
-                        <TextBlock Text="⇥" FontSize="34" HorizontalAlignment="Center" Foreground="{StaticResource Accent}" />
-                        <TextBlock Text="als Nächstes" HorizontalAlignment="Center" />
-                    </StackPanel>
-                </Button>
                 <Button Style="{StaticResource ArrowButton}" Click="OnReturn" ToolTip="Markierte Aufträge zurück in den Vorrat" Margin="6,30,6,8">
                     <StackPanel>
                         <TextBlock Text="⬅" FontSize="34" HorizontalAlignment="Center" Foreground="{StaticResource Danger}" />
@@ -102,13 +96,8 @@
             <DockPanel Grid.Column="2">
                 <TextBlock x:Name="MachineHeader" DockPanel.Dock="Top" FontSize="19" FontWeight="Bold" Margin="2,0,0,6"
                            Text="An der Maschine" />
-                <WrapPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
-                    <Button Content="⤒ Als Nächstes" Click="OnStep" Tag="Machine|Top" />
-                    <Button Content="▲ Hoch" Click="OnStep" Tag="Machine|Up" />
-                    <Button Content="▼ Runter" Click="OnStep" Tag="Machine|Down" />
-                    <Button Content="⤓ Ganz unten" Click="OnStep" Tag="Machine|Bottom" />
-                    <Button Content="＋ Gruppe" Click="OnGroupButton" Tag="Machine" ToolTip="Markierte Aufträge gruppieren – oder neue leere Gruppe, wenn nichts markiert ist" />
-                </WrapPanel>
+                <TextBlock DockPanel.Dock="Bottom" Margin="2,10,0,6" FontSize="14" Foreground="{StaticResource FgDim}" TextWrapping="Wrap"
+                           Text="Feste Reihenfolge: Neue Aufträge kommen immer ans Ende und werden in der Reihenfolge abgearbeitet, in der sie zur Maschine geschickt wurden." />
                 <views:JobListControl x:Name="MachineList" Side="Machine" />
             </DockPanel>
         </Grid>

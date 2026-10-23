@@ -8,6 +8,9 @@ Mit PConTRoL legst du fest, in welcher Reihenfolge die HOLZ-HER-Maschine die Nes
 Die Maschine sortiert `_Input` nach dem Änderungsdatum der Dateien, die **älteste zuerst** (am 22.10.2026 an der Maschine getestet).
 PConTRoL setzt die Änderungsdaten so, dass die Maschine genau die angezeigte Reihenfolge übernimmt.
 
+**An der Maschine ist die Reihenfolge fest:** Ein Auftrag, der zur Maschine geschickt wird, reiht sich immer ganz unten ein.
+Die Maschine arbeitet die Aufträge also in der Reihenfolge ab, in der sie hinübergeschickt wurden. Umsortiert wird nur im Vorrat.
+
 ---
 
 ## Installation (einmalig auf dem Nesting-Rechner)
@@ -48,11 +51,11 @@ PConTRoL kann auf mehreren Rechnern laufen:
 
 | Was | Wie |
 |---|---|
-| Auftrag an die Maschine | Von links nach rechts ziehen, oder markieren und **➜ ans Ende** bzw. **⇥ als Nächstes** klicken |
+| Auftrag an die Maschine | Von links nach rechts ziehen, oder markieren und **➜ ans Ende** klicken. Er kommt immer ganz unten in die Liste |
 | Auftrag zurück in den Vorrat | Von rechts nach links ziehen oder **⬅ zurück** klicken. Er kommt wieder in seine Job-Gruppe |
-| Reihenfolge ändern | Innerhalb einer Liste ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen |
+| Reihenfolge ändern | Nur im Vorrat: innerhalb der Liste ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen |
 | Mehrere markieren | Strg + Klick oder Umschalt + Klick, dann alle zusammen ziehen |
-| Gruppe bilden | Aufträge markieren, dann **＋ Gruppe** oder Rechtsklick → *Gruppe aus Auswahl bilden* |
+| Gruppe bilden | Im Vorrat Aufträge markieren, dann **＋ Gruppe** oder Rechtsklick → *Gruppe aus Auswahl bilden* |
 | Leere Gruppe | **＋ Gruppe** ohne Markierung, dann Aufträge hineinziehen (auf die Mitte der Gruppenzeile) |
 | Gruppe verschieben | Die Gruppenzeile ziehen. Alle Platten der Gruppe wandern mit, auch an die Maschine |
 | Auf-/Zuklappen | Auf ▶/▼ klicken oder die Gruppenzeile doppelklicken |
@@ -60,7 +63,7 @@ PConTRoL kann auf mehreren Rechnern laufen:
 | Vollbild | **F11** oder Button *Vollbild* |
 | Sofort neu einlesen | **F5**. Sonst liest das Programm alle 3 Sekunden automatisch neu ein |
 
-**Wohin ein gezogener Auftrag fällt:**
+**Wohin ein gezogener Auftrag im Vorrat fällt** (an der Maschine kommt er immer ganz unten an):
 
 - Auf die obere bzw. untere Hälfte einer Zeile: davor bzw. dahinter. Liegt die Zeile in einer Gruppe, kommt der Auftrag in diese Gruppe.
 - Auf die Mitte einer Gruppenzeile: in die Gruppe.
@@ -70,7 +73,7 @@ PConTRoL kann auf mehreren Rechnern laufen:
 Eine gelbe Linie bzw. ein gelber Rahmen zeigt vor dem Loslassen, wohin der Auftrag fällt.
 
 **Der laufende Auftrag** (grün, ⚙) ist **immer der oberste** an der Maschine.
-Er wird nie verschoben, und sein Datum wird nie geändert. Alles, was man „ganz nach oben“ schiebt, landet direkt dahinter.
+Er wird nie verschoben, und sein Datum wird nie geändert.
 
 Unten im Fenster stehen zum markierten Auftrag das Vorschaubild (.jpg aus BetterNest), die Daten und die Teileliste aus der .lbl-Datei.
 
@@ -100,11 +103,9 @@ Der Button **Statistik** zeigt für jedes Material ein Kreisdiagramm mit **Ausnu
 - **Durchschnitt je Material** ist flächengewichtet: Summe der genutzten Flächen / Summe der Plattenflächen.
 - **Materialien** erscheinen automatisch, sobald eine Platte mit einem neuen Material fertig wird.
   Leerzeichen und Groß-/Kleinschreibung spielen keine Rolle: „Dekor 12mm“ und „ dekor  12MM“ gelten als dasselbe Material.
-- **Keine Doppelzählung:** Jede Platte wird über den Inhalt ihrer .lbl erkannt, auch wenn sie mehrfach gesehen oder mehrfach importiert wird.
+- **Keine Doppelzählung:** Jede Platte wird über den Inhalt ihrer .lbl erkannt, auch wenn sie mehrfach gesehen wird.
 - **Zeitraum:** oben auswählen, z. B. *Dieser Monat* oder *Letztes Jahr*, oder selbst *von/bis* eintragen.
 - **Export:** *Übersicht als CSV* (je Material) und *Platten als CSV* (jede Platte einzeln), jeweils für den gewählten Zeitraum, direkt in Excel zu öffnen.
-- **Bereits bearbeitete Platten übernehmen:** Unter *Einstellungen → Statistik* den Archivordner wählen und auf **Archiv jetzt einlesen** klicken.
-  PConTRoL durchsucht ihn mit allen Unterordnern nach `.lbl`-Dateien. Als Zeitpunkt gilt das Dateidatum. Mehrfaches Einlesen schadet nicht.
 - Gespeichert wird in `<Hauptordner>\_PConTRoL\statistik.jsonl`, eine Zeile pro Platte, gemeinsam für alle Rechner.
 
 ## Sicherheit
@@ -115,7 +116,7 @@ Der Button **Statistik** zeigt für jedes Material ein Kreisdiagramm mit **Ausnu
   - `.jpg` (Vorschau) und `.ups` bleiben im Job-Ordner.
   - Ein Vorschaubild, das z. B. HOLZ-HER Production Control nach `_Input` mitgenommen hat, wandert beim Zurückholen wieder mit in den Job-Ordner.
 - Reihenfolge beim Verschieben zur Maschine:
-  1. Zuerst wird das Datum gesetzt. So erscheint der Auftrag in `_Input` sofort an der richtigen Stelle.
+  1. Zuerst wird das Datum gesetzt. So erscheint der Auftrag in `_Input` sofort ganz unten.
   2. Dann wird zuerst die `.lbl` verschoben, danach die `.hop`.
 - **Gesperrte Dateien** (die Maschine liest gerade):
   1. PConTRoL versucht es automatisch mehrmals.
@@ -137,7 +138,7 @@ tests\PConTRoL.Tests xUnit-Tests (Datumslogik, Gruppen, Verschieben inkl. gesper
   - `FinishedJobTracker` erkennt Platten, die die Maschine fertig bearbeitet hat.
   - `StatisticsStore` speichert sie (JSON Lines, nur anhängen, Dubletten über den SHA-256 der .lbl).
   - `StatisticsService` wertet aus (flächengewichtet je Material, Zeitfilter).
-  - `ArchiveImporter` liest einen Archivordner ein, `StatisticsCsv` exportiert nach Excel.
+  - `StatisticsCsv` exportiert nach Excel.
 - Die Kreisdiagramme zeichnet das kleine eigene Steuerelement `Views\PieChart.cs`.
   Eine Diagramm-Bibliothek (z. B. LiveCharts2 mit SkiaSharp) würde die EXE und jedes Update deutlich größer machen und mehr können, als hier gebraucht wird.
 

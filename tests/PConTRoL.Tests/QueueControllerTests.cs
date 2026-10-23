@@ -79,38 +79,41 @@ public sealed class QueueControllerTests : IDisposable
     }
 
     [Fact]
-    public void Send_as_next_puts_job_right_after_running_job()
+    public void Sent_jobs_always_queue_at_the_end_in_sending_order()
     {
         MachineJob("J0", "run", 100);
         MachineJob("J0", "m2", 90);
-        MachineJob("J0", "m3", 80);
         StockJob("JobA", "a1", 300);
+        StockJob("JobB", "b1", 400);
         var c = Controller();
 
-        var r = c.Move(Side.Stock, Side.Machine, Selection.OfKeys("a1"), DropTarget.Start);
+        // Auch ein Ziel "ganz oben" bzw. ein Drop zwischen zwei Aufträgen landet am Ende.
+        Assert.True(c.Move(Side.Stock, Side.Machine, Selection.OfKeys("a1"), DropTarget.Start).Success);
+        Assert.True(c.Move(Side.Stock, Side.Machine, Selection.OfKeys("b1"), new DropTarget(DropKind.BeforeJob, "m2")).Success);
 
-        Assert.True(r.Success, r.Message);
-        Assert.Equal(["run", "a1", "m2", "m3"], MachineOrderOnDisk());
+        Assert.Equal(["run", "m2", "a1", "b1"], MachineOrderOnDisk());
+        Assert.Equal(["run", "m2", "a1", "b1"], c.Refresh().Scan.Machine.Select(j => j.Key));
         Assert.Equal(Now.AddMinutes(-100), File.GetLastWriteTimeUtc(Path.Combine(_paths.Input, "run.hop")));
-        Assert.Equal(["run", "a1", "m2", "m3"], c.Refresh().Scan.Machine.Select(j => j.Key));
     }
 
     [Fact]
-    public void Reordering_machine_updates_dates_and_never_touches_running_job()
+    public void Machine_order_cannot_be_changed()
     {
         MachineJob("J0", "run", 100);
         MachineJob("J0", "m2", 90);
         MachineJob("J0", "m3", 80);
         MachineJob("J0", "m4", 70);
         var c = Controller();
+        var dates = Directory.GetFiles(_paths.Input).ToDictionary(f => f, File.GetLastWriteTimeUtc);
 
-        Assert.True(c.Step(Side.Machine, Selection.OfKeys("m4"), MoveStep.Top).Success);
-        Assert.Equal(["run", "m4", "m2", "m3"], MachineOrderOnDisk());
+        var step = c.Step(Side.Machine, Selection.OfKeys("m4"), MoveStep.Top);
+        var move = c.Move(Side.Machine, Side.Machine, Selection.OfKeys("m2"), DropTarget.End);
 
-        // Versuch, den laufenden Auftrag zu verschieben: keine Änderung.
-        var r = c.Step(Side.Machine, Selection.OfKeys("run"), MoveStep.Bottom);
-        Assert.False(r.Changed);
-        Assert.Equal(Now.AddMinutes(-100), File.GetLastWriteTimeUtc(Path.Combine(_paths.Input, "run.hop")));
+        Assert.False(step.Success);
+        Assert.False(move.Success);
+        Assert.Equal(QueueController.MachineOrderFixedMessage, step.Message);
+        Assert.Equal(["run", "m2", "m3", "m4"], MachineOrderOnDisk());
+        Assert.All(dates, d => Assert.Equal(d.Value, File.GetLastWriteTimeUtc(d.Key)));
     }
 
     [Fact]

@@ -322,9 +322,6 @@ public partial class MainWindow : Window, IJobListHost
     private async void OnSendEnd(object sender, RoutedEventArgs e) =>
         await MoveSelection(StockList, Side.Machine, DropTarget.End, "Zur Maschine");
 
-    private async void OnSendNext(object sender, RoutedEventArgs e) =>
-        await MoveSelection(StockList, Side.Machine, DropTarget.Start, "Zur Maschine");
-
     private async void OnReturn(object sender, RoutedEventArgs e) =>
         await MoveSelection(MachineList, Side.Stock, DropTarget.End, "Zurück in den Vorrat");
 
@@ -409,36 +406,35 @@ public partial class MainWindow : Window, IJobListHost
             return item;
         }
 
+        // An der Maschine ist die Reihenfolge fest: nur zurück in den Vorrat, Gruppen nur benennen/auflösen.
         if (side == Side.Stock)
         {
             Item("➜  An die Maschine (ans Ende)", () => MoveSelection(list, Side.Machine, DropTarget.End, "Zur Maschine"), has);
-            Item("⇥  An die Maschine (als Nächstes)", () => MoveSelection(list, Side.Machine, DropTarget.Start, "Zur Maschine"), has);
             Item("⤒  Ganz nach oben", () => StepSelection(side, MoveStep.Top), has);
+            Item("⤓  Ganz nach unten", () => StepSelection(side, MoveStep.Bottom), has);
+            menu.Items.Add(new Separator());
+
+            Item("Gruppe aus Auswahl bilden …", () => GroupSelection(side), has);
+
+            var groups = _snapshot?.Layout.For(side).Groups ?? [];
+            var moveTo = new MenuItem { Header = "In Gruppe verschieben", IsEnabled = has && groups.Count > 0 };
+            foreach (var g in groups)
+            {
+                var target = new MenuItem { Header = g.Name };
+                var id = g.Id;
+                target.Click += async (_, _) =>
+                    await Execute(c => c.Move(side, side, selection, new DropTarget(DropKind.IntoGroupEnd, id)), "In Gruppe verschieben");
+                moveTo.Items.Add(target);
+            }
+            menu.Items.Add(moveTo);
+
+            var groupedKeys = rows.Where(r => !r.IsGroup && !r.IsPinned && r.GroupId != null).Select(r => r.Id).ToList();
+            Item("Aus Gruppe nehmen", () => Execute(c => c.RemoveFromGroup(side, groupedKeys), "Aus Gruppe nehmen"), groupedKeys.Count > 0);
         }
         else
         {
-            Item("⇥  Als Nächstes", () => StepSelection(side, MoveStep.Top), has);
             Item("⬅  Zurück in den Vorrat", () => MoveSelection(list, Side.Stock, DropTarget.End, "Zurück in den Vorrat"), has);
         }
-        Item("⤓  Ganz nach unten", () => StepSelection(side, MoveStep.Bottom), has);
-        menu.Items.Add(new Separator());
-
-        Item("Gruppe aus Auswahl bilden …", () => GroupSelection(side), has);
-
-        var groups = _snapshot?.Layout.For(side).Groups ?? [];
-        var moveTo = new MenuItem { Header = "In Gruppe verschieben", IsEnabled = has && groups.Count > 0 };
-        foreach (var g in groups)
-        {
-            var target = new MenuItem { Header = g.Name };
-            var id = g.Id;
-            target.Click += async (_, _) =>
-                await Execute(c => c.Move(side, side, selection, new DropTarget(DropKind.IntoGroupEnd, id)), "In Gruppe verschieben");
-            moveTo.Items.Add(target);
-        }
-        menu.Items.Add(moveTo);
-
-        var groupedKeys = rows.Where(r => !r.IsGroup && !r.IsPinned && r.GroupId != null).Select(r => r.Id).ToList();
-        Item("Aus Gruppe nehmen", () => Execute(c => c.RemoveFromGroup(side, groupedKeys), "Aus Gruppe nehmen"), groupedKeys.Count > 0);
 
         if (rows.Count == 1 && rows[0].IsGroup)
         {

@@ -307,6 +307,15 @@ public partial class JobListControl : UserControl
     /// <summary>Ermittelt aus der Mausposition, wohin eingefügt wird, und welche Markierung gezeigt wird.</summary>
     private (DropTarget? Target, RowViewModel? Row, DropIndicator Indicator) ResolveDrop(DragEventArgs e)
     {
+        // Maschine: feste Reihenfolge – nichts umsortieren, Neues kommt immer ans Ende.
+        if (Side == Side.Machine)
+        {
+            if (e.Data.GetData(DragFormat) is not DragPayload { Source: Side.Stock })
+                return (null, null, DropIndicator.None);
+            var last = Rows.LastOrDefault();
+            return (DropTarget.End, last, last != null ? DropIndicator.Below : DropIndicator.None);
+        }
+
         var pos = e.GetPosition(Grid);
         var hit = Grid.InputHitTest(pos) as DependencyObject;
         if (hit != null && FindAncestor<DataGridColumnHeader>(hit) != null)
