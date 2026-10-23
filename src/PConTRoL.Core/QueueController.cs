@@ -179,6 +179,12 @@ public sealed class QueueController
             return Guard(() => Mutate(side, (layout, _) => LayoutOps.RenameGroup(layout, groupId, name)));
     }
 
+    public OperationResult SortGroupByName(Side side, string groupId)
+    {
+        lock (_sync)
+            return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.SortGroupByName(layout, groupId, pinned)));
+    }
+
     public OperationResult DissolveGroup(Side side, string groupId)
     {
         lock (_sync)

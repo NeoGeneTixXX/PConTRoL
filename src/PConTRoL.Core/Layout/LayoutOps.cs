@@ -21,23 +21,13 @@ public static class LayoutOps
         return layout.Order.Where(set.Contains).ToList();
     }
 
-    /// <summary>
-    /// Verschiebt innerhalb einer Seite an ein Drop-Ziel. Rückgabe: true, wenn sich etwas geändert hat.
-    /// Innerhalb einer Gruppe wird nicht umsortiert: Priorität haben nur Einzelaufträge und ganze Gruppen.
-    /// </summary>
+    /// <summary>Verschiebt innerhalb einer Seite an ein Drop-Ziel. Rückgabe: true, wenn sich etwas geändert hat.</summary>
     public static bool Move(SideLayout layout, Selection selection, DropTarget target, string? pinned = null)
     {
         var keys = ExpandKeys(layout, selection, pinned);
         if (keys.Count == 0) return false;
         if (target.Anchor != null && (keys.Contains(target.Anchor, StringComparer.OrdinalIgnoreCase) || selection.WholeGroups.Contains(target.Anchor)))
             return false;
-
-        var groupsOfKeys = keys.Select(layout.GroupOf).Distinct().ToList();
-        if (selection.WholeGroups.Count == 0 && groupsOfKeys is [{ } ownGroup])
-        {
-            var work = layout.Order.Where(k => !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (ResolveTarget(layout, work, target, pinned).IntoGroup == ownGroup) return false;
-        }
 
         var before = Snapshot(layout);
         var keep = KeepMembership(layout, selection, keys);
@@ -95,8 +85,8 @@ public static class LayoutOps
     }
 
     /// <summary>
-    /// Prioritäts-Buttons: hoch/runter/ganz oben/ganz unten. Es bewegen sich nur Einzelaufträge und ganze Gruppen;
-    /// ist ein Auftrag in einer Gruppe markiert, wandert die ganze Gruppe.
+    /// Prioritäts-Buttons: hoch/runter/ganz oben/ganz unten. Sind nur Aufträge aus einer Gruppe markiert,
+    /// wird innerhalb dieser Gruppe sortiert; sonst bewegen sich Einzelaufträge und ganze Gruppen.
     /// </summary>
     public static bool Step(SideLayout layout, Selection selection, MoveStep step, string? pinned = null)
     {
@@ -106,12 +96,46 @@ public static class LayoutOps
         var work = layout.Order.Where(k => !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)).ToList();
         var before = string.Join("|", work);
 
-        var items = TopLevelItems(layout, work);
-        bool IsSel(List<string> item) => item.Any(selected.Contains);
-        work = Shift(items, IsSel, step).SelectMany(i => i).ToList();
+        var groupsOfKeys = keys.Select(layout.GroupOf).Distinct().ToList();
+        var container = selection.WholeGroups.Count == 0 && groupsOfKeys.Count == 1 ? groupsOfKeys[0] : null;
+
+        if (container != null && layout.MembersOf(container).Any(k => !selected.Contains(k) && !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)))
+        {
+            // Innerhalb einer Gruppe verschieben.
+            var members = work.Where(k => layout.GroupOf(k) == container).ToList();
+            ReplaceMembers(layout, work, container, Shift(members, selected.Contains, step));
+        }
+        else
+        {
+            // Oberste Ebene: Gruppen bewegen sich als Block.
+            var items = TopLevelItems(layout, work);
+            bool IsSel(List<string> item) => item.Any(selected.Contains);
+            work = Shift(items, IsSel, step).SelectMany(i => i).ToList();
+        }
 
         layout.Order = Rebuild(layout, work, pinned);
         return string.Join("|", work) != before;
+    }
+
+    /// <summary>Sortiert die Aufträge einer Gruppe nach Namen (Zahlen numerisch: _2 vor _10). Die Gruppe bleibt an ihrer Stelle.</summary>
+    public static bool SortGroupByName(SideLayout layout, string groupId, string? pinned = null)
+    {
+        var work = layout.Order.Where(k => !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)).ToList();
+        var members = work.Where(k => layout.GroupOf(k) == groupId).ToList();
+        var sorted = members.OrderBy(k => k, NaturalComparer.Instance).ToList();
+        if (sorted.SequenceEqual(members)) return false;
+
+        ReplaceMembers(layout, work, groupId, sorted);
+        layout.Order = Rebuild(layout, work, pinned);
+        return true;
+    }
+
+    /// <summary>Setzt die Mitglieder einer Gruppe in neuer Reihenfolge auf ihre bisherigen Plätze.</summary>
+    private static void ReplaceMembers(SideLayout layout, List<string> work, string groupId, List<string> newOrder)
+    {
+        var queue = new Queue<string>(newOrder);
+        for (var i = 0; i < work.Count; i++)
+            if (layout.GroupOf(work[i]) == groupId) work[i] = queue.Dequeue();
     }
 
     public static GroupInfo CreateEmptyGroup(SideLayout layout, string name)

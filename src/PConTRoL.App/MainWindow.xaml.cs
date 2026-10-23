@@ -533,8 +533,16 @@ public partial class MainWindow : Window, IJobListHost
             });
         }
 
+        // Nach Namen sortieren: Gruppenzeile oder Aufträge aus genau einer Gruppe markiert (nur im Vorrat).
+        var sortGroups = rows.Select(r => r.IsGroup ? r.Id : r.GroupId).Distinct().ToList();
+        if (side == Side.Stock && sortGroups is [{ } sortGroup])
+        {
+            menu.Items.Add(new Separator());
+            Item("Gruppe nach Name sortieren (A–Z)", () => Execute(c => c.SortGroupByName(side, sortGroup), "Nach Name sortieren"));
+        }
+
         menu.Items.Add(new Separator());
-        Item("Neue leere Gruppe …", () => CreateEmptyGroup(side));
+        if (side == Side.Stock) Item("Neue leere Gruppe …", () => CreateEmptyGroup(side));
         Item("Alle Gruppen zuklappen", () => SetAllCollapsed(side, true));
         Item("Alle Gruppen aufklappen", () => SetAllCollapsed(side, false));
     }

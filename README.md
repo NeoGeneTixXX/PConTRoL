@@ -53,7 +53,8 @@ PConTRoL kann auf mehreren Rechnern laufen:
 |---|---|
 | Auftrag an die Maschine | Von links nach rechts ziehen, oder markieren und **➜ ans Ende** klicken. Er kommt immer ganz unten in die Liste |
 | Auftrag zurück in den Vorrat | Von rechts nach links ziehen oder **⬅ zurück** klicken. Er kommt wieder in seine Job-Gruppe |
-| Priorität ändern | Nur im Vorrat und nur für **Einzelaufträge oder ganze Gruppen**: ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen. Ist ein Auftrag in einer Gruppe markiert, wandert die ganze Gruppe. Innerhalb einer Gruppe wird nicht umsortiert |
+| Priorität ändern | Nur im Vorrat: ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen. Gruppenzeile markiert: die ganze Gruppe wandert. Aufträge innerhalb einer Gruppe markiert: es wird innerhalb der Gruppe sortiert |
+| Gruppe nach Namen sortieren | Im Vorrat Rechtsklick auf die Gruppe (oder auf Aufträge darin) → *Gruppe nach Name sortieren (A–Z)*. Zahlen zählen numerisch: `_2` kommt vor `_10` |
 | Automatik | Button **Automatik AN/AUS** in der Mitte. Ist die Maschine **60 Sekunden leer**, schickt PConTRoL den obersten Eintrag des Vorrats zur Maschine: einen Einzelauftrag oder eine Gruppe komplett |
 | Mehrere markieren | Strg + Klick oder Umschalt + Klick, dann alle zusammen ziehen |
 | Gruppe bilden | Im Vorrat Aufträge markieren, dann **＋ Gruppe** oder Rechtsklick → *Gruppe aus Auswahl bilden* |

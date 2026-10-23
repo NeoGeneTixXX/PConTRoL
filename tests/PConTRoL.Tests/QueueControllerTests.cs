@@ -118,6 +118,28 @@ public sealed class QueueControllerTests : IDisposable
     }
 
     [Fact]
+    public void Group_can_be_sorted_in_stock_but_not_at_the_machine()
+    {
+        MachineJob("J0", "run", 100);
+        StockJob("JobA", "a_10", 300, board: 1);
+        StockJob("JobA", "a_2", 300, board: 2);
+        StockJob("JobB", "b_10", 200, board: 1);
+        StockJob("JobB", "b_2", 200, board: 2);
+        var c = Controller();
+        c.Refresh();
+
+        Assert.True(c.SortGroupByName(Side.Stock, "auto:JobA").Changed);
+        Assert.Equal(["a_2", "a_10"], c.Refresh().Layout.Stock.MembersOf("auto:JobA"));
+        Assert.True(c.Step(Side.Stock, Selection.OfKeys("a_10"), MoveStep.Top).Changed);
+        Assert.Equal(["a_10", "a_2"], c.Refresh().Layout.Stock.MembersOf("auto:JobA"));
+
+        Assert.True(c.Move(Side.Stock, Side.Machine, Selection.OfGroup("auto:JobB"), DropTarget.End).Success);
+        Assert.False(c.SortGroupByName(Side.Machine, "auto:JobB").Success);
+        Assert.False(c.Step(Side.Machine, Selection.OfKeys("b_2"), MoveStep.Top).Success);
+        Assert.Equal(["run", "b_10", "b_2"], MachineOrderOnDisk());
+    }
+
+    [Fact]
     public void Locked_file_aborts_and_rolls_back_everything()
     {
         MachineJob("J0", "run", 100);
