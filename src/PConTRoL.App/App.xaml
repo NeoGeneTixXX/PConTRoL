@@ -16,6 +16,7 @@
             <SolidColorBrush x:Key="FgDim" Color="#B0B0B0" />
             <SolidColorBrush x:Key="Accent" Color="#F2C230" />
             <SolidColorBrush x:Key="AccentDim" Color="#6E5A1C" />
+            <SolidColorBrush x:Key="ButtonBg" Color="#3C3C3C" />
             <SolidColorBrush x:Key="Danger" Color="#E05A4F" />
             <!-- Statistik: Ausnutzung grün (wie im App-Symbol), Verschnitt rot -->
             <SolidColorBrush x:Key="ChartUsed" Color="#4CAF50" />
@@ -28,7 +29,7 @@
 
             <Style x:Key="BaseButton" TargetType="Button">
                 <Setter Property="Foreground" Value="{StaticResource Fg}" />
-                <Setter Property="Background" Value="#3C3C3C" />
+                <Setter Property="Background" Value="{StaticResource ButtonBg}" />
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
                 <Setter Property="FontSize" Value="16" />
                 <Setter Property="Padding" Value="14,8" />

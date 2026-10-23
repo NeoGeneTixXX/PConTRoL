@@ -45,9 +45,12 @@ public sealed class LayoutDocument
     public SideLayout Stock { get; set; } = new();
     public SideLayout Machine { get; set; } = new();
 
+    /// <summary>Automatik-Modus (gilt für alle Rechner): leere Maschine wird aus dem Vorrat nachgefüllt.</summary>
+    public bool AutoMode { get; set; }
+
     public SideLayout For(Side side) => side == Side.Stock ? Stock : Machine;
 
-    public LayoutDocument Clone() => new() { Version = Version, Stock = Stock.Clone(), Machine = Machine.Clone() };
+    public LayoutDocument Clone() => new() { Version = Version, Stock = Stock.Clone(), Machine = Machine.Clone(), AutoMode = AutoMode };
 }
 
 /// <summary>Was gezogen bzw. markiert wurde: einzelne Aufträge und ganze Gruppen.</summary>

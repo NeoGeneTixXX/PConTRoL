@@ -11,6 +11,7 @@ using PConTRoL.App.Services;
 using PConTRoL.App.ViewModels;
 using PConTRoL.App.Views;
 using PConTRoL.Core;
+using PConTRoL.Core.Automation;
 using PConTRoL.Core.Layout;
 using PConTRoL.Core.Logging;
 using PConTRoL.Core.Statistics;
@@ -25,6 +26,8 @@ public partial class MainWindow : Window, IJobListHost
     private readonly DispatcherTimer _timer = new() { Interval = RefreshInterval };
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly List<FileSystemWatcher> _watchers = [];
+    private readonly AutoFeeder _autoFeeder = new();
+    private string? _autoError;
     private UserSettings _settings;
     private QueueController? _controller;
     private StatisticsStore? _statistics;
@@ -181,7 +184,83 @@ public partial class MainWindow : Window, IJobListHost
         {
             _refreshing = false;
         }
-        if (controller == _controller) Render();
+        if (controller == _controller)
+        {
+            Render();
+            await CheckAutoFeed();
+        }
+    }
+
+    // ---------- Automatik ----------
+
+    private async void OnAutoClick(object sender, RoutedEventArgs e)
+    {
+        if (_snapshot == null) return;
+        var enable = !_snapshot.Layout.AutoMode;
+        _autoError = null;
+        await Execute(c => c.SetAutoMode(enable), enable ? "Automatik einschalten" : "Automatik ausschalten");
+    }
+
+    /// <summary>Ist die Maschine lange genug leer, den obersten Vorrats-Eintrag schicken. Fehler zeigen keinen Dialog.</summary>
+    private async Task CheckAutoFeed()
+    {
+        var controller = _controller;
+        var snap = _snapshot;
+        if (controller == null || snap == null || _error != null)
+        {
+            _autoFeeder.Restart();
+            ShowAutoStatus(false, new AutoFeedStatus(AutoFeedState.Off, TimeSpan.Zero));
+            return;
+        }
+
+        var status = _autoFeeder.Observe(snap.Layout.AutoMode, snap.Scan.Machine.Count, snap.Scan.Stock.Count, DateTime.UtcNow);
+        ShowAutoStatus(snap.Layout.AutoMode, status);
+        if (status.State != AutoFeedState.Due || _busy || StockList.IsDragging || MachineList.IsDragging) return;
+
+        _autoFeeder.Restart(); // Klappt es nicht, erst nach weiteren 60 s erneut versuchen.
+        _busy = true;
+        ListsArea.IsEnabled = false;
+        BusyText.Text = "Automatik: nächster Auftrag zur Maschine …";
+        OperationResult result;
+        try
+        {
+            result = await Task.Run(controller.FeedNext);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("Automatik fehlgeschlagen", ex);
+            result = OperationResult.Fail(ex.Message);
+        }
+        finally
+        {
+            BusyText.Text = "";
+            ListsArea.IsEnabled = true;
+            _busy = false;
+        }
+        _autoError = result.Success ? null : result.Message;
+        await RefreshNow();
+    }
+
+    private void ShowAutoStatus(bool enabled, AutoFeedStatus status)
+    {
+        AutoStateText.Text = enabled ? "AN" : "AUS";
+        AutoButton.Background = enabled ? (Brush)FindResource("RunningBg") : (Brush)FindResource("ButtonBg");
+        if (enabled && _autoError != null)
+        {
+            AutoInfoText.Text = "Letzter Versuch fehlgeschlagen: " + _autoError;
+            AutoInfoText.Foreground = (Brush)FindResource("Danger");
+            return;
+        }
+
+        AutoInfoText.Foreground = (Brush)FindResource("FgDim");
+        AutoInfoText.Text = status.State switch
+        {
+            AutoFeedState.MachineBusy => "Wartet, bis die Maschine leer ist",
+            AutoFeedState.NoStock => "Maschine leer, Vorrat leer",
+            AutoFeedState.Waiting => $"Maschine leer – nächster Auftrag in {Math.Ceiling(status.Remaining.TotalSeconds):0} s",
+            AutoFeedState.Due => "Nächster Auftrag wird geschickt …",
+            _ => "",
+        };
     }
 
     private void Render()

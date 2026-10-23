@@ -79,6 +79,15 @@
             </DockPanel>
 
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <Button x:Name="AutoButton" Style="{StaticResource ArrowButton}" Click="OnAutoClick"
+                        ToolTip="Automatik: Ist die Maschine 60 Sekunden leer, wird der oberste Eintrag aus dem Vorrat (Einzelauftrag oder ganze Gruppe) zur Maschine geschickt. Gilt für alle Rechner.">
+                    <StackPanel>
+                        <TextBlock Text="Automatik" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="AutoStateText" Text="AUS" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <TextBlock x:Name="AutoInfoText" FontSize="13" Foreground="{StaticResource FgDim}" TextWrapping="Wrap"
+                           TextAlignment="Center" Margin="6,0,6,24" />
                 <Button Style="{StaticResource ArrowButton}" Click="OnSendEnd" ToolTip="Markierte Aufträge ans Ende der Maschinenliste">
                     <StackPanel>
                         <TextBlock Text="➜" FontSize="34" HorizontalAlignment="Center" Foreground="{StaticResource Accent}" />

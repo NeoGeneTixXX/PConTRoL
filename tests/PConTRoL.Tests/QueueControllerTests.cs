@@ -1,4 +1,5 @@
 using PConTRoL.Core;
+using PConTRoL.Core.Automation;
 using PConTRoL.Core.Files;
 using PConTRoL.Core.Layout;
 using PConTRoL.Core.Logging;
@@ -240,6 +241,65 @@ public sealed class QueueControllerTests : IDisposable
         Assert.Equal(["run", "a1", "a2"], snap.Scan.Machine.Select(j => j.Key));
         Assert.Equal("auto:JobA", snap.Layout.Machine.GroupOf("a1"));
         Assert.Empty(snap.Layout.Stock.Groups);
+    }
+
+    [Fact]
+    public void Auto_feed_sends_top_group_complete_only_when_enabled_and_machine_empty()
+    {
+        StockJob("JobA", "a1", 300, board: 1);
+        StockJob("JobA", "a2", 300, board: 2);
+        StockJob("JobB", "b1", 200);
+        MachineJob("J0", "run", 100);
+        var c = Controller();
+
+        Assert.False(c.FeedNext().Changed); // Automatik aus
+
+        Assert.True(c.SetAutoMode(true).Changed);
+        Assert.True(Controller().Refresh().Layout.AutoMode); // gilt auch für andere Rechner
+        Assert.False(c.FeedNext().Changed); // Maschine nicht leer
+
+        File.Delete(Path.Combine(_paths.Input, "run.hop"));
+        File.Delete(Path.Combine(_paths.Input, "run.lbl"));
+        var r = c.FeedNext();
+
+        Assert.True(r.Success && r.Changed, r.Message);
+        Assert.Equal(["a1", "a2"], MachineOrderOnDisk());
+        Assert.False(c.FeedNext().Changed); // Maschine wieder belegt
+        Assert.Equal(["b1"], c.Refresh().Layout.Stock.Order);
+    }
+
+    [Fact]
+    public void Auto_feed_skips_while_another_computer_holds_the_lock()
+    {
+        StockJob("JobA", "a1", 300);
+        var c = Controller();
+        c.SetAutoMode(true);
+
+        using (new FileStream(_paths.AutoLockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            Assert.False(c.FeedNext().Changed);
+        Assert.Empty(MachineOrderOnDisk());
+
+        Assert.True(c.FeedNext().Changed);
+        Assert.Equal(["a1"], MachineOrderOnDisk());
+    }
+
+    [Fact]
+    public void Auto_feeder_waits_sixty_seconds_of_empty_machine()
+    {
+        var f = new AutoFeeder();
+        Assert.Equal(AutoFeedState.Off, f.Observe(false, 0, 3, Now).State);
+        Assert.Equal(AutoFeedState.MachineBusy, f.Observe(true, 1, 3, Now).State);
+
+        var waiting = f.Observe(true, 0, 3, Now);
+        Assert.Equal(new AutoFeedStatus(AutoFeedState.Waiting, TimeSpan.FromSeconds(60)), waiting);
+        Assert.Equal(AutoFeedState.Waiting, f.Observe(true, 0, 3, Now.AddSeconds(59)).State);
+        Assert.Equal(AutoFeedState.Due, f.Observe(true, 0, 3, Now.AddSeconds(60)).State);
+
+        // Zwischendurch wieder belegt: Zählung beginnt von vorn.
+        f.Observe(true, 1, 3, Now.AddSeconds(61));
+        Assert.Equal(AutoFeedState.Waiting, f.Observe(true, 0, 3, Now.AddSeconds(62)).State);
+        Assert.Equal(AutoFeedState.NoStock, f.Observe(true, 0, 0, Now.AddSeconds(200)).State);
+        Assert.Equal(AutoFeedState.Due, f.Observe(true, 0, 1, Now.AddSeconds(201)).State);
     }
 
     [Fact]

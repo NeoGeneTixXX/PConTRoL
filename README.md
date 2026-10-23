@@ -53,7 +53,8 @@ PConTRoL kann auf mehreren Rechnern laufen:
 |---|---|
 | Auftrag an die Maschine | Von links nach rechts ziehen, oder markieren und **➜ ans Ende** klicken. Er kommt immer ganz unten in die Liste |
 | Auftrag zurück in den Vorrat | Von rechts nach links ziehen oder **⬅ zurück** klicken. Er kommt wieder in seine Job-Gruppe |
-| Reihenfolge ändern | Nur im Vorrat: innerhalb der Liste ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen |
+| Priorität ändern | Nur im Vorrat und nur für **Einzelaufträge oder ganze Gruppen**: ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen. Ist ein Auftrag in einer Gruppe markiert, wandert die ganze Gruppe. Innerhalb einer Gruppe wird nicht umsortiert |
+| Automatik | Button **Automatik AN/AUS** in der Mitte. Ist die Maschine **60 Sekunden leer**, schickt PConTRoL den obersten Eintrag des Vorrats zur Maschine: einen Einzelauftrag oder eine Gruppe komplett |
 | Mehrere markieren | Strg + Klick oder Umschalt + Klick, dann alle zusammen ziehen |
 | Gruppe bilden | Im Vorrat Aufträge markieren, dann **＋ Gruppe** oder Rechtsklick → *Gruppe aus Auswahl bilden* |
 | Leere Gruppe | **＋ Gruppe** ohne Markierung, dann Aufträge hineinziehen (auf die Mitte der Gruppenzeile) |
@@ -71,6 +72,11 @@ PConTRoL kann auf mehreren Rechnern laufen:
 - Auf die freie Fläche unter der Liste: ans Ende.
 
 Eine gelbe Linie bzw. ein gelber Rahmen zeigt vor dem Loslassen, wohin der Auftrag fällt.
+
+**Automatik:** Der Schalter gilt für alle Rechner (gespeichert in `<Hauptordner>\_PConTRoL\reihenfolge.json`).
+Nachgefüllt wird von dem Rechner, auf dem PConTRoL zuerst die 60 Sekunden voll hat; die Sperrdatei `automatik.lock` verhindert doppeltes Schicken.
+Unter dem Schalter steht, wie lange es noch dauert. Schlägt ein Versuch fehl (z. B. Datei gesperrt), steht das dort in Rot, und nach weiteren 60 Sekunden wird es erneut versucht.
+Jedes Ein-/Ausschalten und jedes automatische Schicken steht im Log (Aktion `AUTOMATIK`).
 
 **Der laufende Auftrag** (grün, ⚙) ist **immer der oberste** an der Maschine.
 Er wird nie verschoben, und sein Datum wird nie geändert.

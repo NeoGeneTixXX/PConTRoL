@@ -21,13 +21,23 @@ public static class LayoutOps
         return layout.Order.Where(set.Contains).ToList();
     }
 
-    /// <summary>Verschiebt innerhalb einer Seite an ein Drop-Ziel. Rückgabe: true, wenn sich etwas geändert hat.</summary>
+    /// <summary>
+    /// Verschiebt innerhalb einer Seite an ein Drop-Ziel. Rückgabe: true, wenn sich etwas geändert hat.
+    /// Innerhalb einer Gruppe wird nicht umsortiert: Priorität haben nur Einzelaufträge und ganze Gruppen.
+    /// </summary>
     public static bool Move(SideLayout layout, Selection selection, DropTarget target, string? pinned = null)
     {
         var keys = ExpandKeys(layout, selection, pinned);
         if (keys.Count == 0) return false;
         if (target.Anchor != null && (keys.Contains(target.Anchor, StringComparer.OrdinalIgnoreCase) || selection.WholeGroups.Contains(target.Anchor)))
             return false;
+
+        var groupsOfKeys = keys.Select(layout.GroupOf).Distinct().ToList();
+        if (selection.WholeGroups.Count == 0 && groupsOfKeys is [{ } ownGroup])
+        {
+            var work = layout.Order.Where(k => !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (ResolveTarget(layout, work, target, pinned).IntoGroup == ownGroup) return false;
+        }
 
         var before = Snapshot(layout);
         var keep = KeepMembership(layout, selection, keys);
@@ -84,7 +94,10 @@ public static class LayoutOps
         Cleanup(layout);
     }
 
-    /// <summary>Prioritäts-Buttons: hoch/runter/ganz oben/ganz unten.</summary>
+    /// <summary>
+    /// Prioritäts-Buttons: hoch/runter/ganz oben/ganz unten. Es bewegen sich nur Einzelaufträge und ganze Gruppen;
+    /// ist ein Auftrag in einer Gruppe markiert, wandert die ganze Gruppe.
+    /// </summary>
     public static bool Step(SideLayout layout, Selection selection, MoveStep step, string? pinned = null)
     {
         var keys = ExpandKeys(layout, selection, pinned);
@@ -93,26 +106,9 @@ public static class LayoutOps
         var work = layout.Order.Where(k => !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)).ToList();
         var before = string.Join("|", work);
 
-        var groupsOfKeys = keys.Select(layout.GroupOf).Distinct().ToList();
-        var container = selection.WholeGroups.Count == 0 && groupsOfKeys.Count == 1 ? groupsOfKeys[0] : null;
-
-        if (container != null && layout.MembersOf(container).Any(k => !selected.Contains(k) && !string.Equals(k, pinned, StringComparison.OrdinalIgnoreCase)))
-        {
-            // Innerhalb einer Gruppe verschieben.
-            var members = work.Where(k => layout.GroupOf(k) == container).ToList();
-            var shifted = Shift(members, selected.Contains, step);
-            var queue = new Queue<string>(shifted);
-            for (var i = 0; i < work.Count; i++)
-                if (layout.GroupOf(work[i]) == container) work[i] = queue.Dequeue();
-        }
-        else
-        {
-            // Oberste Ebene: Gruppen bewegen sich als Block.
-            var items = TopLevelItems(layout, work);
-            bool IsSel(List<string> item) => item.Any(selected.Contains);
-            var shifted = Shift(items, IsSel, step);
-            work = shifted.SelectMany(i => i).ToList();
-        }
+        var items = TopLevelItems(layout, work);
+        bool IsSel(List<string> item) => item.Any(selected.Contains);
+        work = Shift(items, IsSel, step).SelectMany(i => i).ToList();
 
         layout.Order = Rebuild(layout, work, pinned);
         return string.Join("|", work) != before;

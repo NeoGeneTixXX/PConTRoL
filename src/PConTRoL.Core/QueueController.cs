@@ -101,6 +101,66 @@ public sealed class QueueController
             return Guard(() => Mutate(side, (layout, pinned) => LayoutOps.Step(layout, selection, step, pinned)));
     }
 
+    /// <summary>Automatik-Modus ein- oder ausschalten (gemeinsam für alle Rechner).</summary>
+    public OperationResult SetAutoMode(bool enabled)
+    {
+        lock (_sync)
+        {
+            return Guard(() =>
+            {
+                RefreshCore();
+                var doc = _doc!;
+                if (doc.AutoMode == enabled) return OperationResult.NoChange;
+                doc.AutoMode = enabled;
+                _store.Save(doc);
+                _log.Write("AUTOMATIK", "", enabled ? "eingeschaltet" : "ausgeschaltet");
+                return OperationResult.Ok;
+            });
+        }
+    }
+
+    /// <summary>
+    /// Automatik: schickt den obersten Eintrag des Vorrats (Einzelauftrag oder ganze Gruppe) zur Maschine –
+    /// aber nur, wenn die Automatik an und die Maschine wirklich leer ist. Eine Sperrdatei im gemeinsamen
+    /// Ordner verhindert, dass zwei Rechner gleichzeitig nachfüllen.
+    /// </summary>
+    public OperationResult FeedNext()
+    {
+        lock (_sync)
+        {
+            return Guard(() =>
+            {
+                FileStream? autoLock;
+                try
+                {
+                    Directory.CreateDirectory(_paths.Shared);
+                    autoLock = new FileStream(_paths.AutoLockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    return OperationResult.NoChange; // Ein anderer Rechner füllt gerade nach.
+                }
+
+                using (autoLock)
+                {
+                    var snap = RefreshCore();
+                    var doc = _doc!;
+                    if (!doc.AutoMode || snap.Scan.Machine.Count > 0) return OperationResult.NoChange;
+
+                    var first = doc.Stock.Order.FirstOrDefault();
+                    if (first == null) return OperationResult.NoChange;
+                    var group = doc.Stock.GroupOf(first);
+                    var selection = group != null ? Selection.OfGroup(group) : Selection.OfKeys(first);
+                    var name = group != null ? doc.Stock.FindGroup(group)?.Name ?? first : first;
+
+                    var result = SendToMachine(selection);
+                    _log.Write("AUTOMATIK", name, result.Success ? "zur Maschine geschickt" : "fehlgeschlagen: " + result.Message);
+                    return result;
+                }
+            });
+        }
+    }
+
     public OperationResult CreateGroup(Side side, string name)
     {
         lock (_sync)

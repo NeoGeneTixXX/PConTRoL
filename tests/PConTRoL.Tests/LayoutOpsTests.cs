@@ -62,13 +62,22 @@ public class LayoutOpsTests
     }
 
     [Fact]
-    public void Step_up_inside_group_stays_in_group()
+    public void Step_on_job_inside_group_moves_whole_group()
     {
         var l = Sample();
         LayoutOps.Step(l, Selection.OfKeys("g3"), MoveStep.Up);
-        Assert.Equal(["a", "b", "g1", "g3", "g2", "c"], l.Order);
-        LayoutOps.Step(l, Selection.OfKeys("g3"), MoveStep.Top);
-        Assert.Equal(["a", "b", "g3", "g1", "g2", "c"], l.Order);
+        Assert.Equal(["a", "g1", "g2", "g3", "b", "c"], l.Order);
+        LayoutOps.Step(l, Selection.OfKeys("g2"), MoveStep.Top);
+        Assert.Equal(["g1", "g2", "g3", "a", "b", "c"], l.Order);
+    }
+
+    [Fact]
+    public void Jobs_cannot_be_reordered_inside_their_group()
+    {
+        var l = Sample();
+        Assert.False(LayoutOps.Move(l, Selection.OfKeys("g3"), new DropTarget(DropKind.BeforeJob, "g1")));
+        Assert.False(LayoutOps.Move(l, Selection.OfKeys("g1"), new DropTarget(DropKind.IntoGroupEnd, "G")));
+        Assert.Equal(["a", "b", "g1", "g2", "g3", "c"], l.Order);
     }
 
     [Fact]

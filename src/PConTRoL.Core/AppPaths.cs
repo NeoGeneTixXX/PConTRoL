@@ -22,6 +22,9 @@ public sealed class AppPaths
     public string NestResult { get; }
     public string Shared { get; }
     public string LayoutFile => Path.Combine(Shared, "reihenfolge.json");
+
+    /// <summary>Sperrdatei, damit die Automatik nicht auf zwei Rechnern gleichzeitig nachfüllt.</summary>
+    public string AutoLockFile => Path.Combine(Shared, "automatik.lock");
     public string LogFolder => Shared;
 
     /// <summary>Statistik aller fertigen Platten (eine JSON-Zeile pro Platte, für alle Rechner gemeinsam).</summary>
