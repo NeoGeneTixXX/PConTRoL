@@ -64,6 +64,18 @@ public partial class App : Application
         _tray.Exit += (_, _) => ExitApp();
         status.PropertyChanged += (_, _) => _tray.SetToolTip("PConTRoL – läuft: " + status.CurrentName);
 
+        // Vor dem ersten Öffnen der Einstellungen, damit dort „Nach Updates suchen“ schon funktioniert.
+        _updates = new UpdateService();
+        _updates.UpdateReady += (_, asset) =>
+        {
+            var version = asset.Version.ToString();
+            _main.ShowUpdateAvailable(version, asset.NotesMarkdown);
+            _tray.ShowUpdateAvailable(version);
+        };
+        _main.Updates = _updates;
+        _main.UpdateRequested += (_, _) => ApplyUpdate(confirmed: true);
+        _tray.UpdateRequested += (_, _) => ApplyUpdate(confirmed: false);
+
         var startInTray = e.Args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
         if (!startInTray) _main.Show();
 
@@ -73,15 +85,6 @@ public partial class App : Application
             _main.OpenSettings();
         }
 
-        _updates = new UpdateService();
-        _updates.UpdateReady += (_, asset) =>
-        {
-            var version = asset.Version.ToString();
-            _main.ShowUpdateAvailable(version, asset.NotesMarkdown);
-            _tray.ShowUpdateAvailable(version);
-        };
-        _main.UpdateRequested += (_, _) => ApplyUpdate(confirmed: true);
-        _tray.UpdateRequested += (_, _) => ApplyUpdate(confirmed: false);
         _updates.Start();
     }
 

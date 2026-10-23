@@ -89,8 +89,11 @@ public partial class MainWindow : Window, IJobListHost
 
     public event EventHandler? HiddenToTray;
 
-    /// <summary>Klick auf „Jetzt aktualisieren“ im Update-Hinweis.</summary>
+    /// <summary>Klick auf „Jetzt aktualisieren“ im Update-Hinweis oder in den Einstellungen.</summary>
     public event EventHandler? UpdateRequested;
+
+    /// <summary>Für „Nach Updates suchen“ in den Einstellungen (von App gesetzt).</summary>
+    public UpdateService? Updates { get; set; }
 
     // ---------- Update-Hinweis ----------
 
@@ -686,7 +689,7 @@ public partial class MainWindow : Window, IJobListHost
     public void OpenSettings()
     {
         CaptureLayout();
-        var dlg = new SettingsWindow(_settings, Popup, ApplyScale);
+        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates);
         if (IsVisible) dlg.Owner = this;
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         if (dlg.ShowDialog() != true) return;
@@ -700,6 +703,9 @@ public partial class MainWindow : Window, IJobListHost
         ApplyScale();
         ApplyPartColumns();
         if (rootChanged) ApplyRoot();
+
+        // „Jetzt installieren“ in den Einstellungen: erst speichern (oben), dann wie der Update-Hinweis.
+        if (dlg.InstallUpdateRequested) UpdateRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Spalten der Teileliste nach Einstellungen → Teileliste (Reihenfolge, Name, sichtbar).</summary>

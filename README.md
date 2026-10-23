@@ -40,6 +40,8 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
     Läuft gerade eine Aktion (Verschieben, Datum setzen), wird nichts eingespielt. Dann einfach danach noch einmal klicken.
   - **Später**: Das Update wird beim **nächsten Programmstart** eingespielt.
   - Das Tray-Menü zeigt zusätzlich den Eintrag *Neue Version … installieren*.
+- **Von Hand:** *Einstellungen → Programm → Nach Updates suchen*. Dort steht auch die installierte Version.
+  Ist ein Update da, erscheint **Jetzt installieren**: Die Einstellungen werden gespeichert, dann läuft das Update wie oben.
 - Ein Update wird **nie automatisch während der Arbeit** eingespielt.
 - Einstellungen (`%APPDATA%\PConTRoL`), die Reihenfolge und das Log (`<Hauptordner>\_PConTRoL`) liegen außerhalb des Programmordners und überstehen jedes Update.
 - Schlägt ein Update fehl, läuft die bisherige Version weiter. Das Ergebnis steht in `%APPDATA%\PConTRoL\update.log`.

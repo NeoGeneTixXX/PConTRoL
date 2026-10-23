@@ -15,17 +15,21 @@ public partial class SettingsWindow : Window
     private readonly PopupWindow _popup;
     private readonly Action<double?> _previewMainScale;
     private readonly bool _popupWasVisible;
+    private readonly UpdateService? _updates;
     private bool _loading = true;
 
     /// <param name="previewMainScale">Vorschau der Größe im Hauptfenster; null = gespeicherten Wert wiederherstellen.</param>
-    public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale)
+    /// <param name="updates">Für „Nach Updates suchen“; null = nicht verfügbar.</param>
+    public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale, UpdateService? updates = null)
     {
         InitializeComponent();
         _original = current.Clone();
         _edit = current.Clone();
         _popup = popup;
         _previewMainScale = previewMainScale;
+        _updates = updates;
         _popupWasVisible = popup.IsVisible;
+        ShowUpdateState();
 
         MainFolderBox.Text = _edit.MainFolder;
         MainScaleSlider.Value = Math.Round(_edit.MainScale * 100);
@@ -130,6 +134,74 @@ public partial class SettingsWindow : Window
         var light = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 140;
         button.Foreground = light ? Brushes.Black : Brushes.White;
         button.Content = "#" + hex.TrimStart('#')[^6..];
+    }
+
+    // ---------- Update ----------
+
+    /// <summary>Nach dem Schließen: Update einspielen (nur zusammen mit DialogResult == true).</summary>
+    public bool InstallUpdateRequested { get; private set; }
+
+    private void ShowUpdateState()
+    {
+        VersionLabel.Text = "Version " + UpdateService.CurrentVersion;
+        if (_updates == null || !_updates.IsEnabled)
+        {
+            CheckUpdateButton.IsEnabled = false;
+            SetUpdateStatus("Diese Kopie ist nicht per Setup installiert und kann sich nicht selbst aktualisieren.", "FgDim");
+            return;
+        }
+        if (_updates.Pending is { } pending)
+            ShowReady(pending.Version.ToString());
+    }
+
+    private async void OnCheckUpdate(object sender, RoutedEventArgs e)
+    {
+        if (_updates == null) return;
+        CheckUpdateButton.IsEnabled = false;
+        SetUpdateStatus("Suche nach Updates …", "FgDim");
+        try
+        {
+            var result = await _updates.CheckNowAsync();
+            switch (result.State)
+            {
+                case UpdateCheckState.Ready:
+                    ShowReady(result.Version ?? "?");
+                    break;
+                case UpdateCheckState.UpToDate:
+                    SetUpdateStatus("✓ PConTRoL ist aktuell.", "Fg");
+                    break;
+                case UpdateCheckState.NotInstalled:
+                    SetUpdateStatus("Diese Kopie ist nicht per Setup installiert und kann sich nicht selbst aktualisieren.", "FgDim");
+                    break;
+                default:
+                    SetUpdateStatus("Prüfung fehlgeschlagen: " + result.Error, "Danger");
+                    break;
+            }
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = _updates.IsEnabled;
+        }
+    }
+
+    private void ShowReady(string version)
+    {
+        SetUpdateStatus($"Version {version} ist heruntergeladen.", "Accent");
+        InstallUpdateButton.Visibility = Visibility.Visible;
+    }
+
+    private void SetUpdateStatus(string text, string brushKey)
+    {
+        UpdateStatus.Text = text;
+        UpdateStatus.Foreground = (Brush)FindResource(brushKey);
+    }
+
+    /// <summary>Wie „Speichern“, danach spielt das Hauptfenster das Update ein.</summary>
+    private void OnInstallUpdate(object sender, RoutedEventArgs e)
+    {
+        InstallUpdateRequested = true;
+        OnSave(sender, e);
+        if (DialogResult != true) InstallUpdateRequested = false;
     }
 
     // ---------- Teileliste ----------

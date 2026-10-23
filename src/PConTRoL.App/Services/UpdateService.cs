@@ -6,6 +6,19 @@ using Velopack.Sources;
 
 namespace PConTRoL.App.Services;
 
+public enum UpdateCheckState
+{
+    /// <summary>Nicht per Setup installiert (z. B. lose EXE): kann sich nicht selbst aktualisieren.</summary>
+    NotInstalled,
+    UpToDate,
+
+    /// <summary>Neue Version heruntergeladen, wartet aufs Einspielen.</summary>
+    Ready,
+    Failed,
+}
+
+public sealed record UpdateCheckResult(UpdateCheckState State, string? Version = null, string? Error = null);
+
 /// <summary>
 /// Automatische Updates über GitHub Releases (Velopack).
 ///
@@ -22,7 +35,7 @@ public sealed class UpdateService
 
     private readonly UpdateManager _manager = new(new GithubSource(RepoUrl, null, false));
     private readonly DispatcherTimer _timer = new() { Interval = CheckInterval };
-    private bool _checking;
+    private Task<UpdateCheckResult>? _running;
 
     /// <summary>Heruntergeladenes, noch nicht eingespieltes Update (oder null).</summary>
     public VelopackAsset? Pending { get; private set; }
@@ -49,32 +62,48 @@ public sealed class UpdateService
         _ = CheckNowAsync();
     }
 
-    public async Task CheckNowAsync()
+    /// <summary>
+    /// Sucht nach einem neuen Release und lädt es herunter. Läuft schon eine Prüfung (z. B. die automatische),
+    /// wird auf deren Ergebnis gewartet. Nur vom UI-Thread aufrufen.
+    /// </summary>
+    public async Task<UpdateCheckResult> CheckNowAsync()
     {
-        if (_checking || !IsEnabled) return;
-        _checking = true;
+        if (!IsEnabled) return new(UpdateCheckState.NotInstalled);
+        if (_running != null) return await _running;
+        _running = RunCheckAsync();
+        try
+        {
+            return await _running;
+        }
+        finally
+        {
+            _running = null;
+        }
+    }
+
+    private async Task<UpdateCheckResult> RunCheckAsync()
+    {
         try
         {
             var info = await _manager.CheckForUpdatesAsync();
-            if (info == null) return;
+            if (info == null)
+                return Pending != null ? new(UpdateCheckState.Ready, Pending.Version.ToString()) : new(UpdateCheckState.UpToDate);
 
             var target = info.TargetFullRelease;
-            if (Pending?.Version == target.Version) return;
+            if (Pending?.Version == target.Version) return new(UpdateCheckState.Ready, target.Version.ToString());
 
             await _manager.DownloadUpdatesAsync(info);
             Pending = target;
             UpdateLog.Write($"Version {target.Version} heruntergeladen, wartet auf Bestätigung oder nächsten Start.");
             UpdateLog.MarkAttempt(target.Version.ToString());
             UpdateReady?.Invoke(this, target);
+            return new(UpdateCheckState.Ready, target.Version.ToString());
         }
         catch (Exception ex)
         {
             // Kein Netz, GitHub nicht erreichbar, Rate-Limit … – einfach beim nächsten Mal wieder versuchen.
             UpdateLog.Write("Update-Prüfung fehlgeschlagen", ex);
-        }
-        finally
-        {
-            _checking = false;
+            return new(UpdateCheckState.Failed, Error: ex.Message);
         }
     }
 
