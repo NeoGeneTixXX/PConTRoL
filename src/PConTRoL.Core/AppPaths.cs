@@ -34,6 +34,9 @@ public sealed class AppPaths
     /// <summary>Zwischenablage für Kanban-Kopien, bevor sie nach _Input wandern (gleiches Laufwerk = Verschieben ist atomar).</summary>
     public string KanbanStaging => Path.Combine(Shared, "kanban-tmp");
 
+    /// <summary>Gelöschte Aufträge landen hier (je Löschvorgang ein Unterordner mit Datum/Uhrzeit), nicht endgültig weg.</summary>
+    public string RecycleBin => Path.Combine(Shared, "Papierkorb");
+
     /// <summary>Sperrdatei, damit die Automatik nicht auf zwei Rechnern gleichzeitig nachfüllt.</summary>
     public string AutoLockFile => Path.Combine(Shared, "automatik.lock");
     public string LogFolder => Shared;

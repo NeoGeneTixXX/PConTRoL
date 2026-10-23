@@ -79,6 +79,7 @@
                     <Button Content="▼ Runter" Click="OnStep" Tag="Stock|Down" />
                     <Button Content="⤓ Ganz unten" Click="OnStep" Tag="Stock|Bottom" />
                     <Button Content="＋ Gruppe" Click="OnGroupButton" Tag="Stock" ToolTip="Markierte Aufträge gruppieren – oder neue leere Gruppe, wenn nichts markiert ist" />
+                    <Button Content="🗑 Löschen" Click="OnDeleteButton" ToolTip="Markierte Aufträge in den Papierkorb (_PConTRoL\Papierkorb) verschieben – auch mit der Entf-Taste" />
                 </WrapPanel>
                 <views:JobListControl x:Name="StockList" Side="Stock" />
             </DockPanel>

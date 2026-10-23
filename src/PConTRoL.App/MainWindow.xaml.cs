@@ -519,6 +519,34 @@ public partial class MainWindow : Window, IJobListHost
         Render();
     }
 
+    public async void OnDeleteRequested(JobListControl list) => await DeleteSelection(list);
+
+    private async void OnDeleteButton(object sender, RoutedEventArgs e) => await DeleteSelection(StockList);
+
+    /// <summary>Markierte Aufträge (oder ganze Gruppen) nach Rückfrage in den Papierkorb im Hauptordner.</summary>
+    private async Task DeleteSelection(JobListControl list)
+    {
+        var selection = list.GetSelection();
+        if (selection.IsEmpty || _snapshot == null || _controller == null)
+        {
+            Hint(list.Side == Side.Machine && list.SelectedRows.Any(r => r.IsPinned)
+                ? "Der laufende Auftrag kann nicht gelöscht werden."
+                : "Bitte zuerst Aufträge markieren.");
+            return;
+        }
+
+        var side = list.Side;
+        var count = LayoutOps.ExpandKeys(_snapshot.Layout.For(side), selection, side == Side.Machine ? _snapshot.RunningKey : null).Count;
+        if (count == 0) return;
+        var what = count == 1 ? "den markierten Auftrag" : $"die {count} markierten Aufträge";
+        var where = side == Side.Machine ? "\n\nSie verschwinden damit auch von der Maschine." : "";
+        var answer = MessageBox.Show(this,
+            $"Wirklich {what} löschen?{where}\n\nDie Dateien kommen in den Papierkorb\n{_controller.Paths.RecycleBin}\nund lassen sich von dort von Hand zurückholen.",
+            "Löschen", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+        await Execute(c => c.Delete(side, selection), "Löschen");
+    }
+
     public void OnSelectionChanged(JobListControl list)
     {
         if (list.SelectedRows.Count > 0) _detailsSource = list;
@@ -546,6 +574,7 @@ public partial class MainWindow : Window, IJobListHost
             Item("➜  An die Maschine (ans Ende)", () => MoveSelection(list, Side.Machine, DropTarget.End, "Zur Maschine"), has);
             Item("⤒  Ganz nach oben", () => StepSelection(side, MoveStep.Top), has);
             Item("⤓  Ganz nach unten", () => StepSelection(side, MoveStep.Bottom), has);
+            Item("🗑  Löschen (Papierkorb) …", () => DeleteSelection(list), has);
             menu.Items.Add(new Separator());
 
             Item("Gruppe aus Auswahl bilden …", () => GroupSelection(side), has);
@@ -568,6 +597,7 @@ public partial class MainWindow : Window, IJobListHost
         else
         {
             Item("⬅  Zurück in den Vorrat", () => MoveSelection(list, Side.Stock, DropTarget.End, "Zurück in den Vorrat"), has);
+            Item("🗑  Löschen (Papierkorb) …", () => DeleteSelection(list), has);
         }
 
         if (rows.Count == 1 && rows[0].IsGroup)

@@ -59,6 +59,121 @@ public sealed partial class QueueController
         }
     }
 
+    /// <summary>Höchstzahl für „eine Platte mehrmals“.</summary>
+    public const int MaxKanbanRepeat = 200;
+
+    /// <summary>
+    /// Neue Kachel aus EINER Platte, die <paramref name="count"/>-mal gebraucht wird: Die Platte wird als
+    /// Name_01 in den Kanban-Ordner verschoben und als Name_02 … Name_NN daneben kopiert.
+    /// </summary>
+    public OperationResult CreateKanbanTileRepeated(string name, string hopPath, int count)
+    {
+        lock (_sync)
+        {
+            return Guard(() =>
+            {
+                name = name.Trim();
+                if (name.Length == 0) return OperationResult.Fail("Bitte einen Namen für die Kachel eingeben.");
+                var doc = KanbanStoreInstance.Load();
+                if (doc.Tiles.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)))
+                    return OperationResult.Fail($"Es gibt schon eine Kachel „{name}“.");
+
+                var tile = new KanbanTile { Id = "k" + Guid.NewGuid().ToString("N")[..10], Name = name, Folder = UniqueKanbanFolder(name) };
+                var result = ImportRepeatedIntoTile(tile, hopPath, count, "Kanban anlegen");
+                if (!result.Success) return result;
+
+                doc.Tiles.Add(tile);
+                KanbanStoreInstance.Save(doc);
+                _log.Write("KANBAN", name, $"Kachel angelegt: {Path.GetFileName(hopPath)} {count}-mal");
+                return OperationResult.Ok;
+            });
+        }
+    }
+
+    /// <summary>Eine Platte <paramref name="count"/>-mal zu einer Kachel hinzufügen (Nummern laufen weiter).</summary>
+    public OperationResult AddRepeatedToKanbanTile(string tileId, string hopPath, int count)
+    {
+        lock (_sync)
+        {
+            return Guard(() =>
+            {
+                var doc = KanbanStoreInstance.Load();
+                var tile = doc.Tiles.FirstOrDefault(t => t.Id == tileId);
+                if (tile == null) return OperationResult.Fail("Die Kachel gibt es nicht mehr.");
+
+                var result = ImportRepeatedIntoTile(tile, hopPath, count, "Kanban ergänzen");
+                if (!result.Success) return result;
+
+                KanbanStoreInstance.Save(doc);
+                _log.Write("KANBAN", tile.Name, $"{Path.GetFileName(hopPath)} {count}-mal ergänzt");
+                return OperationResult.Ok;
+            });
+        }
+    }
+
+    /// <summary>
+    /// Dateinamen für Wiederholungen: „Regal_Seite_07.hop“ → „Regal_Seite_01.hop“, „…_02.hop“ … (eine vorhandene
+    /// Endnummer wird ersetzt). Stehen in der Kachel schon Nummern zu diesem Namen, geht es danach weiter.
+    /// Mindestens zweistellig, bei mehr als 99 dreistellig.
+    /// </summary>
+    public static List<string> RepeatedNames(string hopFileName, int count, IEnumerable<string> existingFiles)
+    {
+        var stem = Path.GetFileNameWithoutExtension(hopFileName);
+        var trimmed = System.Text.RegularExpressions.Regex.Replace(stem, @"_\d+$", "");
+        var baseName = trimmed.Length > 0 ? trimmed : stem;
+        var pattern = new System.Text.RegularExpressions.Regex("^" + System.Text.RegularExpressions.Regex.Escape(baseName) + @"_(\d+)\.hop$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var start = existingFiles.Select(f => pattern.Match(f)).Where(m => m.Success)
+            .Select(m => int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))
+            .DefaultIfEmpty(0).Max() + 1;
+        var width = Math.Max(2, (start + count - 1).ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
+        return Enumerable.Range(start, count).Select(n => $"{baseName}_{n.ToString("D" + width, System.Globalization.CultureInfo.InvariantCulture)}.hop").ToList();
+    }
+
+    /// <summary>Verschiebt die Platte als erste Nummer in den Kachelordner und kopiert sie für die übrigen Nummern.</summary>
+    private OperationResult ImportRepeatedIntoTile(KanbanTile tile, string hopPath, int count, string reason)
+    {
+        if (count < 1 || count > MaxKanbanRepeat)
+            return OperationResult.Fail($"Bitte eine Anzahl zwischen 1 und {MaxKanbanRepeat} eingeben.");
+        var hop = Path.GetFullPath(hopPath);
+        var file = Path.GetFileName(hop);
+        if (!hop.EndsWith(".hop", StringComparison.OrdinalIgnoreCase) || !File.Exists(hop))
+            return OperationResult.Fail($"„{file}“ ist keine vorhandene .hop-Datei.");
+        if (IsInside(hop, _paths.Input))
+            return OperationResult.Fail($"„{file}“ liegt an der Maschine. Bitte zuerst in den Vorrat zurückholen.");
+        if (IsInside(hop, _paths.Kanban))
+            return OperationResult.Fail($"„{file}“ gehört schon zu einer Kanban-Kachel.");
+
+        var folder = Path.Combine(_paths.Kanban, tile.Folder);
+        var names = RepeatedNames(file, count, tile.Files);
+        var companions = new[] { ".lbl", ".jpg" }.Where(ext => File.Exists(Path.ChangeExtension(hop, ext))).ToList();
+        foreach (var name in names)
+            foreach (var ext in companions.Prepend(".hop"))
+            {
+                var target = Path.Combine(folder, Path.ChangeExtension(name, ext));
+                if (File.Exists(target))
+                    return OperationResult.Fail($"Im Kanban-Ordner liegt schon „{Path.GetFileName(target)}“. Es wird nichts überschrieben.");
+            }
+
+        var tx = new FileTransaction(_retry, _log);
+        try
+        {
+            // Original wird zur ersten Nummer (verschoben), die weiteren Nummern sind Kopien davon.
+            var first = Path.Combine(folder, names[0]);
+            foreach (var ext in companions) tx.Move(Path.ChangeExtension(hop, ext), Path.ChangeExtension(first, ext), reason);
+            tx.Move(hop, first, reason);
+            foreach (var name in names.Skip(1))
+                foreach (var ext in companions.Prepend(".hop"))
+                    tx.Copy(Path.ChangeExtension(first, ext), Path.Combine(folder, Path.ChangeExtension(name, ext)), reason);
+        }
+        catch (FileOperationException ex)
+        {
+            return RollbackAndFail(tx, ex);
+        }
+        tile.Files.AddRange(names);
+        return OperationResult.Ok;
+    }
+
     /// <summary>Weitere Platten in eine Kachel aufnehmen (werden ebenfalls in ihren Ordner verschoben).</summary>
     public OperationResult AddToKanbanTile(string tileId, IReadOnlyList<string> hopPaths)
     {

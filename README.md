@@ -64,6 +64,7 @@ PConTRoL kann auf mehreren Rechnern laufen:
 |---|---|
 | Auftrag an die Maschine | Von links nach rechts ziehen, oder markieren und **➜ ans Ende** klicken. Er kommt immer ganz unten in die Liste |
 | Auftrag zurück in den Vorrat | Von rechts nach links ziehen oder **⬅ zurück** klicken. Er kommt wieder in seine Job-Gruppe |
+| Aufträge löschen | Markieren (auch ganze Gruppen), dann **🗑 Löschen**, Rechtsklick → *Löschen* oder **Entf**-Taste. Nach Rückfrage wandern alle Dateien des Auftrags (.hop, .lbl, .jpg, .ups) in den **Papierkorb** `<Hauptordner>\_PConTRoL\Papierkorb\<Datum_Uhrzeit>\` – mit Ordnerstruktur, also von Hand zurückholbar. Geht auch an der Maschine, außer beim laufenden Auftrag; gelöschte Aufträge zählen nicht in der Statistik |
 | Priorität ändern | Nur im Vorrat: ziehen, oder die Buttons **Ganz oben / Hoch / Runter / Ganz unten** benutzen. Gruppenzeile markiert: die ganze Gruppe wandert. Aufträge innerhalb einer Gruppe markiert: es wird innerhalb der Gruppe sortiert |
 | Gruppe nach Namen sortieren | Im Vorrat Rechtsklick auf die Gruppe (oder auf Aufträge darin) → *Gruppe nach Name sortieren (A–Z)*. Zahlen zählen numerisch: `_2` kommt vor `_10` |
 | Automatik | Button **Automatik AN/AUS** in der Mitte. Ist die Maschine **60 Sekunden leer**, schickt PConTRoL den obersten Eintrag des Vorrats zur Maschine: einen Einzelauftrag oder eine Gruppe komplett |
@@ -89,7 +90,10 @@ PConTRoL kann auf mehreren Rechnern laufen:
 Eine gelbe Linie bzw. ein gelber Rahmen zeigt vor dem Loslassen, wohin der Auftrag fällt.
 
 **Kanban-Kacheln:** feste Zusammenstellungen von Platten, die immer wieder gebraucht werden (z. B. „Regal 80“).
-- Anlegen unter *Einstellungen → Kanban-Kacheln → Neue Kachel*: Namen eingeben (= Name der Gruppe an der Maschine), .hop-Dateien von irgendwo auswählen.
+- Anlegen unter *Einstellungen → Kanban-Kacheln → Neue Kachel*: Namen eingeben (= Name der Gruppe an der Maschine), dann wählen:
+  - **Unterschiedliche Platten:** mehrere .hop-Dateien von irgendwo auswählen, jede kommt einmal in die Kachel.
+  - **Eine Platte X-mal:** eine .hop auswählen und die Anzahl angeben. Sie wird als `Name_01` abgelegt und als `Name_02`, `Name_03` … kopiert
+    (eine vorhandene Endnummer wie `_07` wird ersetzt; kommen später weitere dazu, zählt die Nummer weiter).
   Die Dateien werden mit .lbl und .jpg nach `<Hauptordner>\Kanban\<Kachel>\` **verschoben**. Dort liegen sie geschützt vor versehentlichem Verschieben oder Löschen.
 - Ein Klick auf die Kachel oben in der Kopfzeile schickt nach kurzer Rückfrage **Kopien** aller Platten als Gruppe ans Ende der Maschine – mit neuer Production ID, wie beim normalen Schicken.
   Die Originale bleiben unverändert, die Kachel ist beliebig oft nutzbar. Liegt eine Kopie noch unfertig an der Maschine, wird nicht nochmal geschickt.
@@ -139,8 +143,8 @@ Der Button **Statistik** zeigt für jedes Material ein Kreisdiagramm mit **Ausnu
 
 ## Sicherheit
 
-- Nest-Dateien werden **nie gelöscht und nie überschrieben**. Erlaubt sind nur drei Dinge:
-  1. Verschieben zwischen `_NestResult\<Job>\` und `_Input`.
+- Nest-Dateien werden **nie endgültig gelöscht und nie überschrieben**. Erlaubt sind nur diese Dinge:
+  1. Verschieben zwischen `_NestResult\<Job>\` und `_Input`, in den Kanban-Ordner und in den Papierkorb (**Löschen**, siehe unten).
   2. Das Setzen des Änderungsdatums.
   3. Beim Schicken zur Maschine die Zeile `_hhdata_ProductionID := …;` im Kopf der .hop (vor `START`), wie früher Production Control.
      Fehlt sie, wird sie direkt vor `START` eingefügt. Alle anderen Bytes, die Kodierung und das Änderungsdatum bleiben gleich; der NC-Code wird nie angefasst.

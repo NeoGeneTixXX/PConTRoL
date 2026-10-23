@@ -70,6 +70,61 @@ public sealed class KanbanTests : IDisposable
     }
 
     [Fact]
+    public void Repeated_names_replace_the_board_number_and_continue_counting()
+    {
+        Assert.Equal(["Regal_Seite_01.hop", "Regal_Seite_02.hop", "Regal_Seite_03.hop"],
+            QueueController.RepeatedNames("Regal_Seite_07.hop", 3, []));
+        Assert.Equal(["Regal_Seite_04.hop", "Regal_Seite_05.hop"],
+            QueueController.RepeatedNames("Regal_Seite_01.hop", 2, ["Regal_Seite_01.hop", "regal_seite_03.hop", "Anderes_09.hop"]));
+        Assert.Equal(["Sockel_01.hop"], QueueController.RepeatedNames("Sockel.hop", 1, []));
+        var many = QueueController.RepeatedNames("X_1.hop", 100, []);
+        Assert.Equal("X_001.hop", many[0]);
+        Assert.Equal("X_100.hop", many[^1]);
+    }
+
+    [Fact]
+    public void One_board_x_times_is_moved_as_01_and_copied_as_02_03()
+    {
+        var a = Board(Path.Combine(_paths.NestResult, "JobA"), "Regal_Seite_07");
+        Board(_paths.Input, "run", 100);
+        var c = Controller();
+
+        var r = c.CreateKanbanTileRepeated("Seiten", a, 3);
+
+        Assert.True(r.Success, r.Message);
+        var tile = Assert.Single(c.KanbanTiles());
+        Assert.Equal(["Regal_Seite_01.hop", "Regal_Seite_02.hop", "Regal_Seite_03.hop"], tile.Files);
+        foreach (var n in new[] { "01", "02", "03" })
+            foreach (var ext in new[] { ".hop", ".lbl", ".jpg" })
+                Assert.True(File.Exists(Path.Combine(KanbanDir("Seiten"), $"Regal_Seite_{n}{ext}")));
+        Assert.False(File.Exists(a)); // Original ist zu _01 geworden
+        Assert.Equal(File.ReadAllBytes(Path.Combine(KanbanDir("Seiten"), "Regal_Seite_01.lbl")),
+            File.ReadAllBytes(Path.Combine(KanbanDir("Seiten"), "Regal_Seite_03.lbl")));
+
+        // Später nochmal 2 dazu: Nummern laufen weiter.
+        var b = Board(Path.Combine(_root, "q"), "Regal_Seite_01");
+        Assert.True(c.AddRepeatedToKanbanTile(tile.Id, b, 2).Success);
+        Assert.Equal(["Regal_Seite_01.hop", "Regal_Seite_02.hop", "Regal_Seite_03.hop", "Regal_Seite_04.hop", "Regal_Seite_05.hop"],
+            c.KanbanTiles()[0].Files);
+
+        c.Refresh();
+        Assert.True(c.SendKanbanTile(tile.Id).Success);
+        Assert.Equal(["run", "Regal_Seite_01", "Regal_Seite_02", "Regal_Seite_03", "Regal_Seite_04", "Regal_Seite_05"],
+            c.Refresh().Scan.Machine.Select(j => j.Key));
+    }
+
+    [Fact]
+    public void Repeat_count_is_checked()
+    {
+        var a = Board(Path.Combine(_root, "q"), "x_01");
+        var c = Controller();
+        Assert.False(c.CreateKanbanTileRepeated("X", a, 0).Success);
+        Assert.False(c.CreateKanbanTileRepeated("X", a, QueueController.MaxKanbanRepeat + 1).Success);
+        Assert.True(File.Exists(a));
+        Assert.Empty(c.KanbanTiles());
+    }
+
+    [Fact]
     public void Jobs_at_the_machine_cannot_become_kanban()
     {
         var m = Board(_paths.Input, "laeuft");

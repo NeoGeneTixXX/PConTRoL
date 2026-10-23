@@ -14,6 +14,13 @@ public sealed class FinishedJobTracker
 
     public FinishedJobTracker(Func<string, bool>? fileExists = null) => _fileExists = fileExists ?? File.Exists;
 
+    /// <summary>Diese Aufträge hat PConTRoL selbst entfernt (gelöscht) – ihr Verschwinden ist kein „fertig“.</summary>
+    public void Forget(IEnumerable<string> keys)
+    {
+        if (_lastMachine == null) return;
+        foreach (var key in keys) _lastMachine.Remove(key);
+    }
+
     /// <summary>Liefert die seit dem letzten Aufruf fertig gewordenen Platten (beim ersten Aufruf keine).</summary>
     public IReadOnlyList<JobInfo> Update(ScanResult scan)
     {

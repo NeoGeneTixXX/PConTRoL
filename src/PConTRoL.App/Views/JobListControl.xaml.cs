@@ -26,6 +26,7 @@ public interface IJobListHost
     void OnToggleGroup(string groupId);
     void OnBuildContextMenu(JobListControl list, ContextMenu menu);
     void OnSelectionChanged(JobListControl list);
+    void OnDeleteRequested(JobListControl list);
 }
 
 /// <summary>Eine der beiden Auftragslisten: mehrspaltig, Gruppen, Mehrfachauswahl, Drag &amp; Drop.</summary>
@@ -71,6 +72,12 @@ public partial class JobListControl : UserControl
         Grid.SelectionChanged += (_, _) => Host?.OnSelectionChanged(this);
         Grid.ContextMenu = new ContextMenu();
         Grid.ContextMenuOpening += OnContextMenuOpening;
+        Grid.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Delete || SelectedRows.Count == 0) return;
+            Host?.OnDeleteRequested(this);
+            e.Handled = true;
+        };
     }
 
     public Side Side { get; set; }

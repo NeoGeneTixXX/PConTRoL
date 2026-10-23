@@ -299,12 +299,14 @@ public partial class SettingsWindow : Window
                 var newName = InputDialog.Ask(this, "Kachel umbenennen", "Neuer Name (= Name der Gruppe an der Maschine):", currentName);
                 if (newName != null) await RunKanban(c => c.RenameKanbanTile(id, newName));
             });
+            var existing = tile.Files.ToList();
             AddButton(grid, 3, "Platten hinzufügen …", async () =>
             {
-                var files = PickHops($"Platten zur Kachel „{currentName}“ hinzufügen");
-                if (files == null) return;
-                if (!ConfirmMove(files.Count, Path.Combine(_controller.Paths.Kanban, tile.Folder))) return;
-                await RunKanban(c => c.AddToKanbanTile(id, files));
+                var choice = AskPlates(currentName, Path.Combine(_controller.Paths.Kanban, tile.Folder), existing);
+                if (choice == null) return;
+                await RunKanban(c => choice.Files != null
+                    ? c.AddToKanbanTile(id, choice.Files)
+                    : c.AddRepeatedToKanbanTile(id, choice.Single!, choice.Count));
             });
             AddButton(grid, 4, "Auflösen", async () =>
             {
@@ -331,19 +333,57 @@ public partial class SettingsWindow : Window
         if (_controller == null) return;
         var name = InputDialog.Ask(this, "Neue Kanban-Kachel", "Name der Kachel (= Name der Gruppe an der Maschine):", "Neue Kachel");
         if (name == null) return;
-        var files = PickHops($"Platten für die Kachel „{name}“ auswählen");
-        if (files == null) return;
-        if (!ConfirmMove(files.Count, Path.Combine(_controller.Paths.Kanban, name))) return;
-        await RunKanban(c => c.CreateKanbanTile(name, files));
+        var choice = AskPlates(name, Path.Combine(_controller.Paths.Kanban, name), []);
+        if (choice == null) return;
+        await RunKanban(c => choice.Files != null
+            ? c.CreateKanbanTile(name, choice.Files)
+            : c.CreateKanbanTileRepeated(name, choice.Single!, choice.Count));
     }
 
-    private List<string>? PickHops(string title)
+    /// <summary>Entweder mehrere verschiedene Platten (Files) oder eine Platte (Single) mehrmals (Count).</summary>
+    private sealed record PlateChoice(List<string>? Files, string? Single, int Count);
+
+    /// <summary>Fragt „Unterschiedliche Platten oder eine Platte X-mal?“, lässt auswählen und bestätigen.</summary>
+    private PlateChoice? AskPlates(string tileName, string folder, IReadOnlyList<string> existingFiles)
+    {
+        var mode = ChoiceDialog.Ask(this, $"Platten für „{tileName}“", "Unterschiedliche Platten oder eine Platte X-mal?",
+            ("Unterschiedliche Platten", "Mehrere .hop-Dateien auswählen; jede kommt einmal in die Kachel."),
+            ("Eine Platte X-mal", "Eine .hop-Datei auswählen und angeben, wie oft sie gebraucht wird. Die Dateien heißen dann …_01, …_02, …_03 usw."));
+        if (mode < 0) return null;
+
+        if (mode == 0)
+        {
+            var files = PickHops($"Platten für „{tileName}“ auswählen", multiple: true);
+            return files != null && ConfirmMove(files.Count, folder) ? new PlateChoice(files, null, 0) : null;
+        }
+
+        var file = PickHops($"Eine Platte für „{tileName}“ auswählen", multiple: false)?.FirstOrDefault();
+        if (file == null) return null;
+        var text = InputDialog.Ask(this, "Wie oft?", $"Wie oft wird „{Path.GetFileName(file)}“ gebraucht?", "2");
+        if (text == null) return null;
+        if (!int.TryParse(text, out var count) || count < 1 || count > QueueController.MaxKanbanRepeat)
+        {
+            MessageBox.Show(this, $"Bitte eine Zahl zwischen 1 und {QueueController.MaxKanbanRepeat} eingeben.", "Kanban",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+
+        var names = QueueController.RepeatedNames(Path.GetFileName(file), count, existingFiles);
+        var range = names.Count == 1 ? names[0] : $"{names[0]} bis {names[^1]}";
+        var ok = MessageBox.Show(this,
+            $"„{Path.GetFileName(file)}“ (mit .lbl und .jpg) wird nach\n{folder}\nverschoben und dort {count}-mal abgelegt:\n{range}\n\n" +
+            "An die Maschine gehen immer Kopien.",
+            "Kanban", MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK;
+        return ok ? new PlateChoice(null, file, count) : null;
+    }
+
+    private List<string>? PickHops(string title, bool multiple)
     {
         var dlg = new OpenFileDialog
         {
             Title = title,
             Filter = "Nest-Programme (*.hop)|*.hop",
-            Multiselect = true,
+            Multiselect = multiple,
         };
         if (_controller != null && Directory.Exists(_controller.Paths.NestResult)) dlg.InitialDirectory = _controller.Paths.NestResult;
         return dlg.ShowDialog(this) == true && dlg.FileNames.Length > 0 ? dlg.FileNames.ToList() : null;
