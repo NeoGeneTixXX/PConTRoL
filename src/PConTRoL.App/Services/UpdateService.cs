@@ -103,7 +103,7 @@ public sealed class UpdateService
         {
             // Kein Netz, GitHub nicht erreichbar, Rate-Limit … – einfach beim nächsten Mal wieder versuchen.
             UpdateLog.Write("Update-Prüfung fehlgeschlagen", ex);
-            return new(UpdateCheckState.Failed, Error: ex.Message);
+            return new(UpdateCheckState.Failed, Error: Describe(ex));
         }
     }
 
@@ -129,6 +129,23 @@ public sealed class UpdateService
         }
     }
 
+    /// <summary>
+    /// Fehlertext mit allen inneren Ursachen („SSL nicht möglich → Zertifikatskette ungültig: UntrustedRoot“).
+    /// Bei SSL-Fehlern steht die eigentliche Ursache fast immer erst in der inneren Exception.
+    /// </summary>
+    public static string Describe(Exception ex)
+    {
+        var parts = new List<string>();
+        for (Exception? e = ex; e != null; e = e.InnerException)
+            if (parts.Count == 0 || !parts[^1].Contains(e.Message, StringComparison.Ordinal))
+                parts.Add(e.Message.Trim());
+        var text = string.Join(" → ", parts);
+        if (ex is System.Net.Http.HttpRequestException { InnerException: System.Security.Authentication.AuthenticationException }
+            || ex.InnerException is System.Security.Authentication.AuthenticationException)
+            text += " – Die Verbindung zu GitHub wurde abgelehnt (Zertifikat, Windows-Uhrzeit, Firewall/Virenscanner prüfen).";
+        return text;
+    }
+
     private static string ReadVersion()
     {
         var v = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
@@ -150,8 +167,9 @@ public static class UpdateLog
         try
         {
             Directory.CreateDirectory(SettingsStore.Folder);
+            // Volle Exception (inkl. innerer Ursachen), sonst fehlt bei SSL-Fehlern genau das Entscheidende.
             File.AppendAllText(FilePath,
-                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {Environment.MachineName} | {message}{(ex != null ? " | " + ex.Message : "")}{Environment.NewLine}");
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {Environment.MachineName} | {message}{(ex != null ? " | " + UpdateService.Describe(ex) + Environment.NewLine + ex : "")}{Environment.NewLine}");
         }
         catch
         {

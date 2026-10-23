@@ -212,7 +212,7 @@ public partial class SettingsWindow : Window
                     SetUpdateStatus("Diese Kopie ist nicht per Setup installiert und kann sich nicht selbst aktualisieren.", "FgDim");
                     break;
                 default:
-                    SetUpdateStatus("Prüfung fehlgeschlagen: " + result.Error, "Danger");
+                    SetUpdateStatus($"Prüfung fehlgeschlagen: {result.Error}\nDetails: {SettingsStore.Folder}\\update.log", "Danger");
                     break;
             }
         }
