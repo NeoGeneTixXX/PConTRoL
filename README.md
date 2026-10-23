@@ -65,7 +65,8 @@ PConTRoL kann auf mehreren Rechnern laufen:
 | Leere Gruppe | **＋ Gruppe** ohne Markierung, dann Aufträge hineinziehen (auf die Mitte der Gruppenzeile) |
 | Gruppe verschieben | Die Gruppenzeile ziehen. Alle Platten der Gruppe wandern mit, auch an die Maschine |
 | Auf-/Zuklappen | Auf ▶/▼ klicken oder die Gruppenzeile doppelklicken |
-| Spalten | Rechtsklick auf die Spaltenköpfe: ein- und ausblenden. Ziehen: Reihenfolge, Rand ziehen: Breite |
+| Spalten | Rechtsklick auf die Spaltenköpfe: ein- und ausblenden. Ziehen: Reihenfolge (z. B. *Prio* nach vorne), Rand ziehen: Breite. Eine Nummernspalte gibt es nicht: An der Maschine läuft es immer von oben nach unten |
+| Spalten der Teileliste | *Einstellungen → Teileliste*: eigene Namen, Reihenfolge (▲/▼) und welche Spalten sichtbar sind. Ziehen am Spaltenkopf unten wird ebenfalls gespeichert |
 | Vollbild | **F11** oder Button *Vollbild* |
 | Sofort neu einlesen | **F5**. Sonst liest das Programm alle 3 Sekunden automatisch neu ein |
 

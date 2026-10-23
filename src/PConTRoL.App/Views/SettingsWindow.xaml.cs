@@ -33,8 +33,11 @@ public partial class SettingsWindow : Window
         OpacitySlider.Value = Math.Round(_edit.PopupOpacity * 100);
         TopmostBox.IsChecked = _edit.PopupTopmost;
         AutostartBox.IsChecked = _edit.StartWithWindows;
+        _edit.PartColumns = PartColumnCatalog.Normalize(_edit.PartColumns);
+        BuildPartColumnRows();
         UpdateSwatches();
         _loading = false;
+        MaxHeight = SystemParameters.WorkArea.Height;
 
         // Live-Vorschau: Pop-up während der Einstellungen anzeigen.
         Loaded += (_, _) =>
@@ -129,6 +132,66 @@ public partial class SettingsWindow : Window
         button.Content = "#" + hex.TrimStart('#')[^6..];
     }
 
+    // ---------- Teileliste ----------
+
+    /// <summary>Eine Zeile je Spalte: Originalname | eigener Name | anzeigen | ▲ ▼.</summary>
+    private void BuildPartColumnRows()
+    {
+        PartColumnsPanel.Children.Clear();
+        var columns = _edit.PartColumns;
+        for (var i = 0; i < columns.Count; i++)
+        {
+            var setting = columns[i];
+            var index = i;
+            var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var original = new TextBlock
+            {
+                Text = PartColumnCatalog.Find(setting.Key)?.DefaultHeader ?? setting.Key,
+                Style = (Style)FindResource("Label"),
+            };
+            var name = new TextBox { Text = setting.Header, VerticalAlignment = VerticalAlignment.Center };
+            name.TextChanged += (_, _) => setting.Header = name.Text;
+            var visible = new CheckBox { Content = "anzeigen", IsChecked = setting.Visible, Margin = new Thickness(12, 0, 6, 0) };
+            visible.Click += (_, _) => setting.Visible = visible.IsChecked == true;
+            var up = new Button { Content = "▲", Padding = new Thickness(10, 2, 10, 2), FontSize = 14, IsEnabled = index > 0, ToolTip = "Weiter nach links" };
+            up.Click += (_, _) => MovePartColumn(index, -1);
+            var down = new Button { Content = "▼", Padding = new Thickness(10, 2, 10, 2), FontSize = 14, IsEnabled = index < columns.Count - 1, ToolTip = "Weiter nach rechts" };
+            down.Click += (_, _) => MovePartColumn(index, +1);
+
+            Grid.SetColumn(name, 1);
+            Grid.SetColumn(visible, 2);
+            Grid.SetColumn(up, 3);
+            Grid.SetColumn(down, 4);
+            grid.Children.Add(original);
+            grid.Children.Add(name);
+            grid.Children.Add(visible);
+            grid.Children.Add(up);
+            grid.Children.Add(down);
+            PartColumnsPanel.Children.Add(grid);
+        }
+    }
+
+    private void MovePartColumn(int index, int delta)
+    {
+        var columns = _edit.PartColumns;
+        var target = index + delta;
+        if (target < 0 || target >= columns.Count) return;
+        (columns[index], columns[target]) = (columns[target], columns[index]);
+        BuildPartColumnRows();
+    }
+
+    private void OnResetPartColumns(object sender, RoutedEventArgs e)
+    {
+        _edit.PartColumns = PartColumnCatalog.Defaults();
+        BuildPartColumnRows();
+    }
+
     private void OnBrowseMain(object sender, RoutedEventArgs e) => Browse(MainFolderBox, "Hauptordner wählen (enthält _Input und _NestResult)");
 
     private void Browse(TextBox box, string title)
@@ -142,6 +205,7 @@ public partial class SettingsWindow : Window
     {
         _edit.MainFolder = MainFolderBox.Text.Trim();
         _edit.StartWithWindows = AutostartBox.IsChecked == true;
+        _edit.PartColumns = PartColumnCatalog.Normalize(_edit.PartColumns);
         Preview();
 
         var root = _edit.MainFolder;

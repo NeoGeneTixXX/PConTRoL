@@ -131,15 +131,8 @@
                 </StackPanel>
                 <DataGrid x:Name="PartsGrid" Grid.Column="2" Style="{StaticResource JobGrid}" AllowDrop="False"
                           ColumnHeaderStyle="{StaticResource JobGridHeader}" CellStyle="{StaticResource JobGridCell}"
-                          RowHeight="28" FontSize="15" SelectionMode="Single">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="RD-Nr." Binding="{Binding RdNumber}" Width="120" />
-                        <DataGridTextColumn Header="Bezeichnung" Binding="{Binding Description}" Width="*" />
-                        <DataGridTextColumn Header="Artikel" Binding="{Binding Article}" Width="200" />
-                        <DataGridTextColumn Header="Maß" Binding="{Binding Size}" Width="120" />
-                        <DataGridTextColumn Header="Nr." Binding="{Binding Number}" Width="90" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                          RowHeight="28" FontSize="15" SelectionMode="Single" />
+                <!-- Spalten der Teileliste: Einstellungen → Teileliste (MainWindow.ApplyPartColumns). -->
             </Grid>
         </Border>
 

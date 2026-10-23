@@ -23,6 +23,7 @@
         </Style>
     </Window.Resources>
 
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="22,10,22,18">
         <TextBlock Text="Ordner" Style="{StaticResource Section}" />
         <Grid>
@@ -100,6 +101,15 @@
         <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" Margin="140,4,0,0" TextWrapping="Wrap"
                    Text="Änderungen sind sofort im Pop-up unten rechts zu sehen (Vorschau)." />
 
+        <TextBlock Text="Teileliste (unten im Hauptfenster)" Style="{StaticResource Section}" />
+        <StackPanel x:Name="PartColumnsPanel" />
+        <DockPanel Margin="140,4,0,0">
+            <Button DockPanel.Dock="Right" Content="Standard" Click="OnResetPartColumns" FontSize="14" Padding="12,4"
+                    ToolTip="Ursprüngliche Namen und Reihenfolge, alle Spalten sichtbar" />
+            <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" TextWrapping="Wrap" VerticalAlignment="Center"
+                       Text="Links steht der Originalname. Eigenen Namen eintragen, mit ▲/▼ die Reihenfolge ändern, Haken weg = Spalte ausblenden." />
+        </DockPanel>
+
         <TextBlock Text="Programm" Style="{StaticResource Section}" />
         <CheckBox x:Name="AutostartBox" Content="Mit Windows starten (im Tray)" />
 
@@ -108,4 +118,5 @@
             <Button Content="Abbrechen" IsCancel="True" MinWidth="130" />
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </Window>

@@ -27,6 +27,7 @@ public partial class MainWindow : Window, IJobListHost
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly AutoFeeder _autoFeeder = new();
+    private readonly Dictionary<DataGridColumn, string> _partColumnKeys = [];
     private string? _autoError;
     private UserSettings _settings;
     private QueueController? _controller;
@@ -68,6 +69,8 @@ public partial class MainWindow : Window, IJobListHost
 
         VersionText.Text = "v" + UpdateService.CurrentVersion;
         ApplyScale();
+        ApplyPartColumns();
+        PartsGrid.ColumnReordered += (_, _) => CapturePartColumnOrder();
 
         ApplyRoot();
         _timer.Start();
@@ -695,7 +698,35 @@ public partial class MainWindow : Window, IJobListHost
         SettingsStore.Save(_settings);
         Popup.ApplyLook(_settings);
         ApplyScale();
+        ApplyPartColumns();
         if (rootChanged) ApplyRoot();
+    }
+
+    /// <summary>Spalten der Teileliste nach Einstellungen → Teileliste (Reihenfolge, Name, sichtbar).</summary>
+    private void ApplyPartColumns()
+    {
+        PartsGrid.Columns.Clear();
+        _partColumnKeys.Clear();
+        foreach (var setting in _settings.PartColumns.Where(c => c.Visible))
+        {
+            if (PartColumnCatalog.Find(setting.Key) is not { } def) continue;
+            var column = new DataGridTextColumn
+            {
+                Header = setting.Header,
+                Binding = new System.Windows.Data.Binding(def.Path),
+                Width = def.Width is { } w ? new DataGridLength(w) : new DataGridLength(1, DataGridLengthUnitType.Star),
+            };
+            _partColumnKeys[column] = def.Key;
+            PartsGrid.Columns.Add(column);
+        }
+    }
+
+    /// <summary>Spalten unten am Kopf verschoben: neue Reihenfolge übernehmen (ausgeblendete bleiben an ihrem Platz).</summary>
+    private void CapturePartColumnOrder()
+    {
+        var shown = PartsGrid.Columns.OrderBy(c => c.DisplayIndex).Select(c => _partColumnKeys[c]);
+        _settings.PartColumns = PartColumnCatalog.Reorder(_settings.PartColumns, shown);
+        SettingsStore.Save(_settings);
     }
 
     /// <summary>Vergrößert/verkleinert die ganze Oberfläche (Einstellungen → Größe).</summary>

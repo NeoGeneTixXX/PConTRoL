@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PConTRoL.Core;
 
 namespace PConTRoL.App.Services;
 
@@ -44,6 +45,9 @@ public sealed class UserSettings
 
     public HashSet<string> CollapsedGroups { get; set; } = [];
     public Dictionary<string, List<ColumnState>> Columns { get; set; } = [];
+
+    /// <summary>Spalten der Teileliste unten: Reihenfolge, eigener Name, sichtbar.</summary>
+    public List<PartColumnSetting> PartColumns { get; set; } = PartColumnCatalog.Defaults();
 
     public double WindowLeft { get; set; } = double.NaN;
     public double WindowTop { get; set; } = double.NaN;
@@ -97,6 +101,7 @@ public static class SettingsStore
         s.LegacyTestFolder = null;
         s.MainScale = UserSettings.ClampScale(s.MainScale);
         s.PopupScale = UserSettings.ClampScale(s.PopupScale);
+        s.PartColumns = PartColumnCatalog.Normalize(s.PartColumns);
         if (legacy) Save(s); // sofort festschreiben, nicht erst beim Beenden
         return s;
     }

@@ -37,7 +37,6 @@ public partial class JobListControl : UserControl
 
     private static readonly ColumnDef[] ColumnDefs =
     [
-        new("pos", "Nr.", nameof(RowViewModel.PositionText), 60, true, true, Right: true),
         new("name", "Auftrag", null, 380, true, true),
         new("job", "Nest-Job", nameof(RowViewModel.NestJob), 280, false, false),
         new("board", "Platte", nameof(RowViewModel.Board), 85, true, true, Right: true),
