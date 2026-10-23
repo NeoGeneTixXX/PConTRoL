@@ -8,7 +8,9 @@ Mit PConTRoL legst du fest, in welcher Reihenfolge die HOLZ-HER-Maschine die Nes
 Der **JobManager** an der Maschine sortiert `_Input` beim Programmstart **zuerst nach der Production ID** (`_hhdata_ProductionID` in der .hop, aufsteigend)
 und danach nach dem Änderungsdatum, **älteste zuerst** (am 22.10.2026 an der Maschine getestet).
 PConTRoL ersetzt HOLZ-HER Production Control: Es gibt jedem Auftrag beim Schicken eine fortlaufende, höhere Production ID und ein späteres Datum.
-So stimmt die Reihenfolge auch nach einem Neustart des JobManagers. Production Control wird nicht mehr benutzt und sollte nicht parallel laufen.
+So stimmt die Reihenfolge auch nach einem Neustart des JobManagers. Production Control wird nicht mehr benutzt und darf nicht parallel laufen:
+Findet PConTRoL beim Start `ProductionControl.exe` auf demselben Rechner, fragt es, ob Production Control beendet werden soll.
+Bei „Nein“ (oder wenn das Beenden nicht klappt) startet PConTRoL nicht. Der JobManager wird nie angefasst.
 
 **An der Maschine ist die Reihenfolge fest:** Ein Auftrag, der zur Maschine geschickt wird, reiht sich immer ganz unten ein.
 Die Maschine arbeitet die Aufträge also in der Reihenfolge ab, in der sie hinübergeschickt wurden. Umsortiert wird nur im Vorrat.

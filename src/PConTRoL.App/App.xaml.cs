@@ -1,6 +1,8 @@
 ﻿using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using PConTRoL.App.Services;
+using PConTRoL.Core;
 using PConTRoL.App.ViewModels;
 using PConTRoL.App.Views;
 
@@ -29,6 +31,12 @@ public partial class App : Application
         }
 
         DispatcherUnhandledException += OnUnhandledException;
+
+        if (!EnsureProductionControlStopped())
+        {
+            Shutdown();
+            return;
+        }
 
         var settings = SettingsStore.Load();
         var status = new QueueStatus();
@@ -75,6 +83,42 @@ public partial class App : Application
         _main.UpdateRequested += (_, _) => ApplyUpdate(confirmed: true);
         _tray.UpdateRequested += (_, _) => ApplyUpdate(confirmed: false);
         _updates.Start();
+    }
+
+    /// <summary>
+    /// Läuft noch Production Control, fragen, ob es beendet werden darf. Ohne Zustimmung startet PConTRoL nicht,
+    /// denn beide Programme zusammen würden die Reihenfolge an der Maschine durcheinanderbringen.
+    /// </summary>
+    private static bool EnsureProductionControlStopped()
+    {
+        var running = ConflictingSoftware.FindRunning();
+        if (running.Count == 0) return true;
+
+        var answer = MessageBox.Show(
+            $"{ConflictingSoftware.DisplayName} läuft noch.\n\n"
+            + "PConTRoL ersetzt Production Control. Laufen beide gleichzeitig, kommen sie sich bei den Aufträgen "
+            + "und der Reihenfolge an der Maschine in die Quere.\n\n"
+            + "Production Control jetzt beenden?\n\n"
+            + "Ja: Production Control wird beendet, danach startet PConTRoL.\n"
+            + "Nein: PConTRoL startet nicht.",
+            "PConTRoL", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.Yes);
+        if (answer != MessageBoxResult.Yes) return false;
+
+        Mouse.OverrideCursor = Cursors.Wait;
+        string? error;
+        try
+        {
+            error = ConflictingSoftware.Stop(running, TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
+        if (error == null) return true;
+
+        MessageBox.Show(error + "\n\nBitte Production Control von Hand beenden und PConTRoL danach neu starten.",
+            "PConTRoL", MessageBoxButton.OK, MessageBoxImage.Error);
+        return false;
     }
 
     /// <summary>
