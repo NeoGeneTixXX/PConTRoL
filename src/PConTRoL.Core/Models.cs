@@ -42,6 +42,9 @@ public sealed class JobInfo
     public int? Priority { get; init; }
     public string ProductionNumber { get; init; } = "";
 
+    /// <summary>_hhdata_ProductionID aus der .hop (0 = keine). Der JobManager sortiert zuerst danach.</summary>
+    public long ProductionId { get; init; }
+
     /// <summary>Summe der Teileflächen in mm² (null, wenn nicht aus der .lbl ableitbar).</summary>
     public double? UsedArea { get; init; }
 

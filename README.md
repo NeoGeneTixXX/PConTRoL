@@ -5,8 +5,10 @@ Mit PConTRoL legst du fest, in welcher Reihenfolge die HOLZ-HER-Maschine die Nes
 - **Links: Auftragsvorrat.** Der Ordner `_NestResult`. Diese Aufträge sieht der Bediener an der Maschine noch nicht.
 - **Rechts: An der Maschine.** Der Ordner `_Input`, genau in der Reihenfolge, in der die Maschine abarbeitet.
 
-Die Maschine sortiert `_Input` nach dem Änderungsdatum der Dateien, die **älteste zuerst** (am 22.10.2026 an der Maschine getestet).
-PConTRoL setzt die Änderungsdaten so, dass die Maschine genau die angezeigte Reihenfolge übernimmt.
+Der **JobManager** an der Maschine sortiert `_Input` beim Programmstart **zuerst nach der Production ID** (`_hhdata_ProductionID` in der .hop, aufsteigend)
+und danach nach dem Änderungsdatum, **älteste zuerst** (am 22.10.2026 an der Maschine getestet).
+PConTRoL ersetzt HOLZ-HER Production Control: Es gibt jedem Auftrag beim Schicken eine fortlaufende, höhere Production ID und ein späteres Datum.
+So stimmt die Reihenfolge auch nach einem Neustart des JobManagers. Production Control wird nicht mehr benutzt und sollte nicht parallel laufen.
 
 **An der Maschine ist die Reihenfolge fest:** Ein Auftrag, der zur Maschine geschickt wird, reiht sich immer ganz unten ein.
 Die Maschine arbeitet die Aufträge also in der Reihenfolge ab, in der sie hinübergeschickt wurden. Umsortiert wird nur im Vorrat.
@@ -117,20 +119,26 @@ Der Button **Statistik** zeigt für jedes Material ein Kreisdiagramm mit **Ausnu
 
 ## Sicherheit
 
-- Nest-Dateien werden **nie gelöscht, nie überschrieben und nie inhaltlich verändert**.
-  Erlaubt sind nur zwei Dinge: Verschieben zwischen `_NestResult\<Job>\` und `_Input`, und das Setzen des Änderungsdatums.
+- Nest-Dateien werden **nie gelöscht und nie überschrieben**. Erlaubt sind nur drei Dinge:
+  1. Verschieben zwischen `_NestResult\<Job>\` und `_Input`.
+  2. Das Setzen des Änderungsdatums.
+  3. Beim Schicken zur Maschine die Zeile `_hhdata_ProductionID := …;` im Kopf der .hop (vor `START`), wie früher Production Control.
+     Fehlt sie, wird sie direkt vor `START` eingefügt. Alle anderen Bytes, die Kodierung und das Änderungsdatum bleiben gleich; der NC-Code wird nie angefasst.
+     PConTRoL vergibt IDs ab 1000 und immer höher als alles, was an der Maschine liegt (999 heißt im JobManager „Platte vorziehen“).
+- Dateien, die schon an der Maschine liegen, werden nie verändert, auch nicht ihr Datum.
 - Verschoben werden `.hop` und `.lbl`.
   - `.jpg` (Vorschau) und `.ups` bleiben im Job-Ordner.
   - Ein Vorschaubild, das z. B. HOLZ-HER Production Control nach `_Input` mitgenommen hat, wandert beim Zurückholen wieder mit in den Job-Ordner.
 - Reihenfolge beim Verschieben zur Maschine:
-  1. Zuerst wird das Datum gesetzt. So erscheint der Auftrag in `_Input` sofort ganz unten.
+  1. Zuerst werden Production ID und Datum gesetzt, noch im Vorrat. So erscheint der Auftrag in `_Input` sofort ganz unten.
   2. Dann wird zuerst die `.lbl` verschoben, danach die `.hop`.
 - **Gesperrte Dateien** (die Maschine liest gerade):
   1. PConTRoL versucht es automatisch mehrmals.
   2. Klappt es nicht, macht es alle Schritte dieser Aktion rückgängig und fragt „Erneut versuchen?“.
   3. Es bleibt kein halber Zustand zurück.
 - Ziel existiert schon: Die Aktion wird abgebrochen, es wird nichts überschrieben.
-- **Log:** Jede Aktion landet in `<Hauptordner>\_PConTRoL\aktionen_JJJJ-MM.log`, mit Zeit, Rechner und Benutzer, Aktion, Datei sowie altem und neuem Datum.
+- **Log:** Jede Aktion landet in `<Hauptordner>\_PConTRoL\aktionen_JJJJ-MM.log`, mit Zeit, Rechner und Benutzer, Aktion, Datei sowie altem und neuem Datum
+  (Production ID: Aktion `PROD-ID` mit alter und neuer ID).
   Ist der Ordner nicht beschreibbar, schreibt PConTRoL ersatzweise nach `%APPDATA%\PConTRoL\`.
 
 ## Für Entwickler
@@ -150,6 +158,8 @@ tests\PConTRoL.Tests xUnit-Tests (Datumslogik, Gruppen, Verschieben inkl. gesper
   Eine Diagramm-Bibliothek (z. B. LiveCharts2 mit SkiaSharp) würde die EXE und jedes Update deutlich größer machen und mehr können, als hier gebraucht wird.
 
 - **Sortierrichtung der Maschine:** Konstante `MachineConfig.SortOrder` in `src\PConTRoL.Core\MachineConfig.cs`. Kein Einstellungspunkt.
+- **Production ID:** `HopProductionId` (setzt die Zeile byte-genau), Sortierung wie der JobManager in `FolderScanner.SortForMachine`.
+  Die zuletzt vergebene ID steht in `reihenfolge.json` (`LastProductionId`).
 - **Datumslogik:** `TimestampPlanner`.
   - Der laufende Auftrag behält sein Datum.
   - Ein bereits richtig sortierter Anfang der Liste bleibt unverändert.

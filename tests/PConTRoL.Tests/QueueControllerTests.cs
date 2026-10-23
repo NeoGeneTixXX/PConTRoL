@@ -3,6 +3,7 @@ using PConTRoL.Core.Automation;
 using PConTRoL.Core.Files;
 using PConTRoL.Core.Layout;
 using PConTRoL.Core.Logging;
+using PConTRoL.Core.Parsing;
 
 namespace PConTRoL.Tests;
 
@@ -37,25 +38,30 @@ public sealed class QueueControllerTests : IDisposable
         File.WriteAllText(Path.Combine(dir, key + ".ups"), "ups");
     }
 
-    private void MachineJob(string nestJob, string key, int minutesAgo) =>
-        WriteJob(_paths.Input, key, nestJob, minutesAgo, 1);
+    private void MachineJob(string nestJob, string key, int minutesAgo, long? productionId = null) =>
+        WriteJob(_paths.Input, key, nestJob, minutesAgo, 1, productionId);
 
-    private static void WriteJob(string dir, string key, string nestJob, int minutesAgo, int board)
+    private static void WriteJob(string dir, string key, string nestJob, int minutesAgo, int board, long? productionId = null)
     {
         var hop = Path.Combine(dir, key + ".hop");
         var lbl = Path.Combine(dir, key + ".lbl");
-        File.WriteAllText(hop, $";NCNAME={key}\r\nVARS\r\n   DX := 5600;\r\n   DY := 2100;\r\n   DZ := 12;\r\n   _hhdata_Material := 'Dekor';\r\n_hhdata_ProdPrio := 50;\r\nSTART\r\nNC-CODE\r\n");
+        var id = productionId is { } p ? $"_hhdata_ProductionID := {p};\r\n" : "";
+        File.WriteAllText(hop, $";NCNAME={key}\r\nVARS\r\n   DX := 5600;\r\n   DY := 2100;\r\n   DZ := 12;\r\n   _hhdata_Material := 'Dekor';\r\n_hhdata_ProdPrio := 50;\r\n{id}START\r\nNC-CODE\r\n");
         File.WriteAllText(lbl, $"[Global]\r\nHopFilename=X:\\Beispiel\\_NestResult\\{nestJob}\\{key}.hop\r\nBoardCount=9\r\nBoardID={board}\r\n[Board]\r\nMaterial=Dekor\r\n");
         var t = Now.AddMinutes(-minutesAgo);
         File.SetLastWriteTimeUtc(hop, t);
         File.SetLastWriteTimeUtc(lbl, t);
     }
 
+    /// <summary>Reihenfolge so, wie der JobManager sortiert: Production ID, dann Datum.</summary>
     private List<string> MachineOrderOnDisk() =>
         Directory.GetFiles(_paths.Input, "*.hop")
-            .Select(f => (Key: Path.GetFileNameWithoutExtension(f), Time: File.GetLastWriteTimeUtc(f)))
-            .OrderBy(x => x.Time).ThenBy(x => x.Key)
+            .Select(f => (Key: Path.GetFileNameWithoutExtension(f), Id: ProductionIdOf(f), Time: File.GetLastWriteTimeUtc(f)))
+            .OrderBy(x => x.Id).ThenBy(x => x.Time).ThenBy(x => x.Key)
             .Select(x => x.Key).ToList();
+
+    private static long ProductionIdOf(string hop) =>
+        HopProductionId.Parse(NestFileParser.Parse(hop, null).ProductionId) ?? 0;
 
     [Fact]
     public void Send_to_end_moves_hop_and_lbl_but_leaves_preview_and_ups()
@@ -149,6 +155,7 @@ public sealed class QueueControllerTests : IDisposable
         var c = Controller();
         var a1Lbl = Path.Combine(_paths.NestResult, "JobA", "a1.lbl");
         var oldTime = File.GetLastWriteTimeUtc(a1Lbl);
+        var a1Hop = File.ReadAllBytes(Path.Combine(_paths.NestResult, "JobA", "a1.hop"));
 
         OperationResult r;
         using (new FileStream(Path.Combine(_paths.NestResult, "JobA", "a2.hop"), FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -163,10 +170,55 @@ public sealed class QueueControllerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_paths.NestResult, "JobA", "a1.hop")));
         Assert.False(File.Exists(Path.Combine(_paths.Input, "a1.lbl")));
         Assert.Equal(oldTime, File.GetLastWriteTimeUtc(a1Lbl));
+        Assert.Equal(a1Hop, File.ReadAllBytes(Path.Combine(_paths.NestResult, "JobA", "a1.hop"))); // Production ID zurückgenommen
 
         // Danach (Sperre weg) klappt es.
         Assert.True(c.Move(Side.Stock, Side.Machine, Selection.OfKeys("a1", "a2"), DropTarget.End).Success);
         Assert.Equal(["run", "m2", "a1", "a2"], MachineOrderOnDisk());
+    }
+
+    [Fact]
+    public void Sent_jobs_get_rising_production_ids_above_everything_at_the_machine()
+    {
+        MachineJob("J0", "run", 100, productionId: 234540);
+        StockJob("JobA", "a1", 300, board: 1);
+        StockJob("JobA", "a2", 300, board: 2);
+        StockJob("JobB", "b1", 200);
+        var c = Controller();
+
+        Assert.True(c.Move(Side.Stock, Side.Machine, Selection.OfGroup("auto:JobA"), DropTarget.End).Success);
+        Assert.Equal(234541, ProductionIdOf(Path.Combine(_paths.Input, "a1.hop")));
+        Assert.Equal(234542, ProductionIdOf(Path.Combine(_paths.Input, "a2.hop")));
+
+        // "run" ist fertig und verschwindet – die Zählung läuft trotzdem weiter, auch auf anderen Rechnern.
+        File.Delete(Path.Combine(_paths.Input, "run.hop"));
+        File.Delete(Path.Combine(_paths.Input, "run.lbl"));
+        Assert.True(Controller().Move(Side.Stock, Side.Machine, Selection.OfKeys("b1"), DropTarget.End).Success);
+        Assert.Equal(234543, ProductionIdOf(Path.Combine(_paths.Input, "b1.hop")));
+        Assert.Equal(["a1", "a2", "b1"], MachineOrderOnDisk());
+        Assert.Equal(["a1", "a2", "b1"], c.Refresh().Scan.Machine.Select(j => j.Key));
+    }
+
+    [Fact]
+    public void Machine_order_follows_production_id_before_date_and_files_there_are_never_touched()
+    {
+        MachineJob("J0", "ohne", 10);                         // keine ID = 0 -> zuerst
+        MachineJob("J0", "spaet", 95, productionId: 1500);    // ID zählt vor Datum
+        MachineJob("J0", "frueh", 20, productionId: 1200);
+        StockJob("JobA", "a1", 300);
+        var c = Controller();
+        Assert.Equal(["ohne", "frueh", "spaet"], c.Refresh().Scan.Machine.Select(j => j.Key));
+        var before = Directory.GetFiles(_paths.Input).ToDictionary(f => f, f => (File.GetLastWriteTimeUtc(f), File.ReadAllBytes(f)));
+
+        Assert.True(c.Move(Side.Stock, Side.Machine, Selection.OfKeys("a1"), DropTarget.End).Success);
+
+        Assert.Equal(1501, ProductionIdOf(Path.Combine(_paths.Input, "a1.hop")));
+        Assert.Equal(["ohne", "frueh", "spaet", "a1"], c.Refresh().Scan.Machine.Select(j => j.Key));
+        Assert.All(before, b =>
+        {
+            Assert.Equal(b.Value.Item1, File.GetLastWriteTimeUtc(b.Key));
+            Assert.Equal(b.Value.Item2, File.ReadAllBytes(b.Key));
+        });
     }
 
     [Fact]

@@ -52,4 +52,40 @@ public class ParserTests
     {
         Assert.Equal("Auftrag_X", FolderScanner.DeriveNestJob("Auftrag_X_07", new NestFileInfo()));
     }
+
+    [Fact]
+    public void Production_id_is_replaced_in_place_and_nothing_else_changes()
+    {
+        var original = File.ReadAllBytes(Data("MUSTER Typ 1000__08_15_00_000_2.hop"));
+        var updated = HopProductionId.Apply(original, 234541);
+
+        var expected = Text1252(original).Replace("_hhdata_ProductionID := 900001;", "_hhdata_ProductionID := 234541;");
+        Assert.Equal(expected, Text1252(updated));
+        Assert.Equal(original.Length, updated.Length); // gleich viele Ziffern
+        Assert.Equal(updated, HopProductionId.Apply(updated, 234541));
+    }
+
+    [Fact]
+    public void Missing_production_id_is_inserted_right_before_start()
+    {
+        var original = File.ReadAllBytes(Data("MUSTER_KW01_1_Montag(XX)_Beispielplatte_12mm_01.hop"));
+        var updated = HopProductionId.Apply(original, 1001);
+
+        var expected = Text1252(original).Replace("_hhdata_ProdPrio := 55;\r\nSTART\r\n", "_hhdata_ProdPrio := 55;\r\n_hhdata_ProductionID := 1001;\r\nSTART\r\n");
+        Assert.Equal(expected, Text1252(updated));
+
+        var info = new NestFileInfo();
+        NestFileParser.ApplyHopHeader(info, Text1252(updated).Split("\r\n"));
+        Assert.Equal("1001", info.ProductionId);
+        Assert.Equal(55, info.Priority);
+    }
+
+    [Fact]
+    public void Hop_without_start_line_is_refused()
+    {
+        var bytes = System.Text.Encoding.Latin1.GetBytes("VARS\r\n   DX := 1;\r\n");
+        Assert.Throws<FormatException>(() => HopProductionId.Apply(bytes, 1001));
+    }
+
+    private static string Text1252(byte[] bytes) => System.Text.Encoding.Latin1.GetString(bytes);
 }

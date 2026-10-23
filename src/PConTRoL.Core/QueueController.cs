@@ -78,6 +78,9 @@ public sealed class QueueController
     /// An der Maschine ist die Reihenfolge fest: Aufträge kommen immer ans Ende, in der Reihenfolge,
     /// in der sie zur Maschine geschickt werden, und lassen sich dort nicht mehr umsortieren.
     /// </summary>
+    /// <summary>Kleinste Production ID, die PConTRoL vergibt (999 hat im JobManager eine Sonderbedeutung: Platte vorziehen).</summary>
+    public const long FirstProductionId = 1000;
+
     public const string MachineOrderFixedMessage =
         "Die Reihenfolge an der Maschine ist fest: Aufträge werden in der Reihenfolge abgearbeitet, in der sie zur Maschine geschickt wurden.";
 
@@ -288,13 +291,23 @@ public sealed class QueueController
         var (keep, carried) = LayoutOps.Extract(stock, selection, keys);
         LayoutOps.Insert(machine, keys, keep, carried, DropTarget.End, snap.RunningKey);
 
+        // Der JobManager sortiert zuerst nach Production ID: neue Aufträge bekommen fortlaufend höhere IDs als alles an der Maschine.
+        var nextId = Math.Max(Math.Max(doc.LastProductionId, snap.Scan.Machine.Select(j => j.ProductionId).DefaultIfEmpty().Max()), FirstProductionId - 1);
+
         var tx = new FileTransaction(_retry, _log);
         try
         {
-            // 1. Daten setzen – bei neuen Aufträgen noch im Vorrat, damit sie in _Input sofort ganz unten einsortiert sind.
-            ApplyMachineOrder(machine.Order, snap, tx, "Zur Maschine");
+            // 1. Production ID in die .hop (noch im Vorrat; das Änderungsdatum bleibt dabei erhalten).
+            foreach (var key in keys)
+            {
+                var job = snap.StockByKey[key];
+                tx.SetProductionId(job.HopPath, ++nextId, job.ProductionId == 0 ? null : job.ProductionId, "Zur Maschine");
+            }
 
-            // 2. Verschieben: erst .lbl, dann .hop (die Maschine sieht die .hop erst, wenn alles da ist).
+            // 2. Daten setzen – bei neuen Aufträgen noch im Vorrat, damit sie in _Input sofort ganz unten einsortiert sind.
+            ApplyAppendDates(keys, snap, tx, "Zur Maschine");
+
+            // 3. Verschieben: erst .lbl, dann .hop (die Maschine sieht die .hop erst, wenn alles da ist).
             foreach (var key in keys)
             {
                 var job = snap.StockByKey[key];
@@ -310,6 +323,7 @@ public sealed class QueueController
 
         doc.Stock = stock;
         doc.Machine = machine;
+        doc.LastProductionId = nextId;
         _store.Save(doc);
         return OperationResult.Ok;
     }
@@ -390,31 +404,29 @@ public sealed class QueueController
         return note == null ? OperationResult.Ok : new OperationResult(true, true, note);
     }
 
-    /// <summary>Setzt die Änderungsdaten so, dass die Maschine genau diese Reihenfolge abarbeitet.</summary>
-    private void ApplyMachineOrder(IReadOnlyList<string> order, QueueSnapshot snap, FileTransaction tx, string reason)
+    /// <summary>
+    /// Setzt die Änderungsdaten der neuen Aufträge (noch im Vorrat) so, dass sie hinter allem liegen,
+    /// was schon an der Maschine ist. Dateien an der Maschine werden dabei nie angefasst.
+    /// </summary>
+    private void ApplyAppendDates(IReadOnlyList<string> keys, QueueSnapshot snap, FileTransaction tx, string reason)
     {
-        var running = snap.RunningKey;
-        if (running != null && (order.Count == 0 || !string.Equals(order[0], running, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("Interner Fehler: Der laufende Auftrag muss oben bleiben.");
+        var machine = snap.Scan.Machine;
+        var anchor = _sortOrder == MachineSortOrder.OldestFirst
+            ? machine.MaxBy(j => j.LastWriteUtc)
+            : machine.MinBy(j => j.LastWriteUtc);
 
-        JobInfo Find(string key) =>
-            snap.MachineByKey.TryGetValue(key, out var m) ? m
-            : snap.StockByKey.TryGetValue(key, out var s) ? s
-            : throw new FileOperationException($"Auftrag „{key}“ nicht mehr vorhanden.", isLocked: false);
+        var jobs = keys.Select(k => snap.StockByKey[k]).ToList();
+        var order = new List<(string Key, DateTime CurrentUtc)>();
+        if (anchor != null) order.Add((anchor.Key, anchor.LastWriteUtc));
+        order.AddRange(jobs.Select(j => (j.Key, j.LastWriteUtc)));
 
-        var jobs = order.Select(Find).ToList();
-        var plan = TimestampPlanner.Plan(
-            jobs.Select(j => (j.Key, j.LastWriteUtc)).ToList(),
-            fixedFirst: running != null,
-            _utcNow(),
-            _sortOrder);
+        var plan = TimestampPlanner.Plan(order, fixedFirst: anchor != null, _utcNow(), _sortOrder);
 
         var byKey = jobs.ToDictionary(j => j.Key, StringComparer.OrdinalIgnoreCase);
         foreach (var change in plan)
         {
-            var job = byKey[change.Key];
-            if (string.Equals(job.Key, running, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Interner Fehler: Datum des laufenden Auftrags würde geändert.");
+            if (!byKey.TryGetValue(change.Key, out var job))
+                throw new InvalidOperationException("Interner Fehler: Datum eines Auftrags an der Maschine würde geändert.");
             tx.SetLastWriteTimeUtc(job.HopPath, change.NewUtc, reason);
             if (job.LblPath != null && File.Exists(job.LblPath))
                 tx.SetLastWriteTimeUtc(job.LblPath, change.NewUtc, reason);

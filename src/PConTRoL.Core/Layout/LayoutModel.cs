@@ -48,9 +48,19 @@ public sealed class LayoutDocument
     /// <summary>Automatik-Modus (gilt für alle Rechner): leere Maschine wird aus dem Vorrat nachgefüllt.</summary>
     public bool AutoMode { get; set; }
 
+    /// <summary>Zuletzt vergebene Production ID (gilt für alle Rechner, wird nur hochgezählt).</summary>
+    public long LastProductionId { get; set; }
+
     public SideLayout For(Side side) => side == Side.Stock ? Stock : Machine;
 
-    public LayoutDocument Clone() => new() { Version = Version, Stock = Stock.Clone(), Machine = Machine.Clone(), AutoMode = AutoMode };
+    public LayoutDocument Clone() => new()
+    {
+        Version = Version,
+        Stock = Stock.Clone(),
+        Machine = Machine.Clone(),
+        AutoMode = AutoMode,
+        LastProductionId = LastProductionId,
+    };
 }
 
 /// <summary>Was gezogen bzw. markiert wurde: einzelne Aufträge und ganze Gruppen.</summary>

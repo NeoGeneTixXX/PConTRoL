@@ -24,6 +24,9 @@ public static class MachineConfig
     ///
     /// Sollte sich das je ändern (Software-Update der Maschine), nur hier umstellen.
     /// Die gesamte Datumslogik (TimestampPlanner) richtet sich nach diesem Wert.
+    ///
+    /// Vor dem Datum zählt die Production ID (_hhdata_ProductionID, aufsteigend): So sortiert der
+    /// HOLZ-HER JobManager beim Start (jobmanager.ini, SortJobsByName=false). Siehe FolderScanner.SortForMachine.
     /// </summary>
     public const MachineSortOrder SortOrder = MachineSortOrder.OldestFirst;
 

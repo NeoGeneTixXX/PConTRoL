@@ -1,4 +1,5 @@
 using PConTRoL.Core.Logging;
+using PConTRoL.Core.Parsing;
 
 namespace PConTRoL.Core.Files;
 
@@ -17,7 +18,8 @@ public sealed class FileOperationException(string message, bool isLocked, Except
 
 /// <summary>
 /// Führt Verschieben und Datum-Setzen aus und kann alles wieder rückgängig machen.
-/// Es wird NIE eine Datei gelöscht oder überschrieben und nie der Inhalt verändert.
+/// Es wird NIE eine Datei gelöscht oder überschrieben. Am Inhalt wird nur die Production ID im Kopf
+/// der .hop gesetzt (<see cref="SetProductionId"/>), sonst nichts.
 /// </summary>
 public sealed class FileTransaction
 {
@@ -38,6 +40,47 @@ public sealed class FileTransaction
         Retry(() => File.SetLastWriteTimeUtc(path, newUtc), path);
         _undo.Add(($"Datum zurück: {Path.GetFileName(path)}", () => File.SetLastWriteTimeUtc(path, old)));
         _log?.Write("DATUM", Path.GetFileName(path), reason, old, newUtc);
+    }
+
+    /// <summary>
+    /// Setzt <c>_hhdata_ProductionID</c> in der .hop. Das Änderungsdatum bleibt erhalten.
+    /// Geschrieben wird über eine temporäre Datei, damit nie eine halbe .hop entsteht.
+    /// </summary>
+    public void SetProductionId(string hopPath, long productionId, long? oldId, string reason)
+    {
+        byte[] original = [];
+        Retry(() => original = NestFileParser.ReadAllBytesShared(hopPath), hopPath);
+        byte[] updated;
+        try
+        {
+            updated = HopProductionId.Apply(original, productionId);
+        }
+        catch (FormatException ex)
+        {
+            throw new FileOperationException($"{Path.GetFileName(hopPath)}: {ex.Message} Es wird nichts geändert.", isLocked: false, ex);
+        }
+        if (updated.AsSpan().SequenceEqual(original)) return;
+
+        var time = File.GetLastWriteTimeUtc(hopPath);
+        Retry(() => ReplaceContent(hopPath, updated, time), hopPath);
+        _undo.Add(($"Production ID zurück: {Path.GetFileName(hopPath)}", () => ReplaceContent(hopPath, original, time)));
+        _log?.Write("PROD-ID", Path.GetFileName(hopPath), $"{reason}: {oldId?.ToString() ?? "keine"} -> {productionId}");
+    }
+
+    private static void ReplaceContent(string path, byte[] content, DateTime lastWriteUtc)
+    {
+        var tmp = path + ".pcontrol-tmp";
+        try
+        {
+            File.WriteAllBytes(tmp, content);
+            File.SetLastWriteTimeUtc(tmp, lastWriteUtc);
+            File.Move(tmp, path, overwrite: true);
+            File.SetLastWriteTimeUtc(path, lastWriteUtc);
+        }
+        finally
+        {
+            if (File.Exists(tmp)) File.Delete(tmp);
+        }
     }
 
     public void Move(string source, string destination, string reason)

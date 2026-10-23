@@ -59,11 +59,18 @@ public sealed class FolderScanner
         return new ScanResult { Stock = stock, Machine = SortForMachine(machine, _sortOrder) };
     }
 
-    /// <summary>Sortiert so, wie die Maschine abarbeitet. Gleiche Zeit: nach Name.</summary>
-    public static List<JobInfo> SortForMachine(IEnumerable<JobInfo> jobs, MachineSortOrder sortOrder) =>
-        sortOrder == MachineSortOrder.OldestFirst
-            ? jobs.OrderBy(j => j.LastWriteUtc).ThenBy(j => j.Key, StringComparer.OrdinalIgnoreCase).ToList()
-            : jobs.OrderByDescending(j => j.LastWriteUtc).ThenBy(j => j.Key, StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>
+    /// Sortiert so, wie der JobManager abarbeitet: zuerst nach Production ID (aufsteigend, keine = 0),
+    /// dann nach Änderungsdatum, bei gleicher Zeit nach Name.
+    /// </summary>
+    public static List<JobInfo> SortForMachine(IEnumerable<JobInfo> jobs, MachineSortOrder sortOrder)
+    {
+        var byId = jobs.OrderBy(j => j.ProductionId);
+        var byDate = sortOrder == MachineSortOrder.OldestFirst
+            ? byId.ThenBy(j => j.LastWriteUtc)
+            : byId.ThenByDescending(j => j.LastWriteUtc);
+        return byDate.ThenBy(j => j.Key, StringComparer.OrdinalIgnoreCase).ToList();
+    }
 
     private JobInfo? Load(string hop, Side side, string? folderNestJob, HashSet<string> seen)
     {
@@ -108,6 +115,7 @@ public sealed class FolderScanner
                 Priority = info.Priority,
                 ProductionNumber = info.ProductionId
                     ?? string.Join(", ", info.Parts.Select(p => p.Number).Where(n => n.Length > 0).Distinct()),
+                ProductionId = HopProductionId.Parse(info.ProductionId) ?? 0,
                 Parts = info.Parts,
                 UsedArea = info.UsedArea,
                 ContentHash = info.LblHash,
