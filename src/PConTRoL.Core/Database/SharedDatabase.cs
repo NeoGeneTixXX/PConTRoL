@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using Npgsql;
@@ -15,6 +16,9 @@ public sealed record UpdateFileEntry(string File, string Version, long Size, str
 /// <b>Updates</b> wie im Navigator: <see cref="AppDataTable"/> listet die Dateien des neuesten Updates
 ///   (Name, Version, Größe, SHA-256), <see cref="UpdateTable"/> hält ihren Inhalt gzip-gepackt, über die Prüfsumme
 ///   adressiert. Große Dateien (das Velopack-Paket hat ~70 MB) liegen dort in Teilen zu <see cref="PartSize"/>.
+///
+/// Gelesen wird zuerst über HTTPS (<see cref="NeonHttp"/>, Port 443), sonst direkt über Port 5432. Hochgeladen wird nur
+/// direkt (Transaktion über mehrere Teile), das macht der Entwickler-PC mit <c>tools\DbUpload</c>.
 /// </summary>
 public sealed class SharedDatabase(string connectionString)
 {
@@ -22,6 +26,10 @@ public sealed class SharedDatabase(string connectionString)
     public const string UpdateTable = "pcontrol_update";
     public const int PartSize = 8 * 1024 * 1024;
 
+    /// <summary>So viel Inhalt holt eine HTTPS-Abfrage auf einmal (als Hex-Text doppelt so groß).</summary>
+    private const int HttpSliceSize = 4 * 1024 * 1024;
+
+    private readonly NeonHttp _http = new(connectionString);
     private bool _schemaReady;
 
     private NpgsqlConnection CreateConnection() => new(connectionString);
@@ -76,7 +84,21 @@ public sealed class SharedDatabase(string connectionString)
     // ------------------------------------------------------------------ Updates
 
     /// <summary>Die Dateien des neuesten Updates laut Datenbank (leer, wenn noch keins hochgeladen wurde).</summary>
-    public async Task<IReadOnlyList<UpdateFileEntry>> GetUpdateFilesAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<UpdateFileEntry>> GetUpdateFilesAsync(CancellationToken ct = default) =>
+        HttpFirstAsync(GetUpdateFilesViaHttpAsync, GetUpdateFilesDirectAsync, ct);
+
+    private async Task<IReadOnlyList<UpdateFileEntry>> GetUpdateFilesViaHttpAsync(CancellationToken ct)
+    {
+        var rows = await _http.QueryAsync($"select datei, version, groesse, pruefsumme, geaendert from {AppDataTable} order by datei", [], ct);
+        return rows.Select(r => new UpdateFileEntry(
+                (string)r["datei"]!, (string)r["version"]!, NeonHttp.Number(r["groesse"]),
+                (string)r["pruefsumme"]!,
+                DateTimeOffset.TryParse((string?)r["geaendert"], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var t)
+                    ? t.UtcDateTime : DateTime.MinValue))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<UpdateFileEntry>> GetUpdateFilesDirectAsync(CancellationToken ct)
     {
         await using var connection = await OpenAsync(ct);
         await using var cmd = new NpgsqlCommand($"select datei, version, groesse, pruefsumme, geaendert from {AppDataTable} order by datei", connection);
@@ -95,7 +117,7 @@ public sealed class SharedDatabase(string connectionString)
     public async Task<bool> PublishUpdateAsync(string version, IReadOnlyList<string> files, CancellationToken ct = default)
     {
         var names = files.Select(Path.GetFileName).ToArray();
-        var existing = (await GetUpdateFilesAsync(ct)).ToDictionary(e => e.File, StringComparer.OrdinalIgnoreCase);
+        var existing = (await GetUpdateFilesDirectAsync(ct)).ToDictionary(e => e.File, StringComparer.OrdinalIgnoreCase);
 
         await using var connection = await OpenAsync(ct);
         await using var tx = await connection.BeginTransactionAsync(ct);
@@ -188,21 +210,7 @@ public sealed class SharedDatabase(string connectionString)
         var tmp = target + ".tmp-" + Environment.MachineName;
         try
         {
-            await using (var connection = await OpenAsync(ct))
-            await using (var cmd = new NpgsqlCommand($"select inhalt from {UpdateTable} where pruefsumme = @sha order by teil", connection))
-            {
-                cmd.Parameters.AddWithValue("sha", entry.Sha256);
-                await using var reader = await cmd.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess, ct);
-                await using var output = File.Create(packed);
-                var parts = 0;
-                while (await reader.ReadAsync(ct))
-                {
-                    await using var part = reader.GetStream(0);
-                    await part.CopyToAsync(output, ct);
-                    parts++;
-                }
-                if (parts == 0) throw new InvalidDataException($"Inhalt von {entry.File} fehlt in der Datenbank.");
-            }
+            await HttpFirstAsync(c => DownloadPackedViaHttpAsync(entry, packed, c), c => DownloadPackedDirectAsync(entry, packed, c), ct);
 
             await using (var input = File.OpenRead(packed))
             await using (var gzip = new GZipStream(input, CompressionMode.Decompress))
@@ -217,6 +225,72 @@ public sealed class SharedDatabase(string connectionString)
         {
             try { File.Delete(packed); } catch (IOException) { }
             try { File.Delete(tmp); } catch (IOException) { }
+        }
+    }
+
+    private async Task<bool> DownloadPackedViaHttpAsync(UpdateFileEntry entry, string packed, CancellationToken ct)
+    {
+        var parts = await _http.QueryAsync($"select teil, length(inhalt) as laenge from {UpdateTable} where pruefsumme = $1 order by teil",
+            [entry.Sha256], ct);
+        if (parts.Count == 0) throw new InvalidDataException($"Inhalt von {entry.File} fehlt in der Datenbank.");
+
+        await using var output = File.Create(packed);
+        foreach (var part in parts)
+        {
+            var teil = (int)NeonHttp.Number(part["teil"]);
+            var length = (int)NeonHttp.Number(part["laenge"]);
+            for (var offset = 0; offset < length; offset += HttpSliceSize)
+            {
+                var rows = await _http.QueryAsync(
+                    $"select substring(inhalt from $1 for $2) as d from {UpdateTable} where pruefsumme = $3 and teil = $4",
+                    [offset + 1, HttpSliceSize, entry.Sha256, teil], ct);
+                var bytes = NeonHttp.Bytes(rows.FirstOrDefault()?["d"]);
+                if (bytes.Length == 0) throw new InvalidDataException($"Inhalt von {entry.File} ist in der Datenbank unvollständig.");
+                await output.WriteAsync(bytes, ct);
+            }
+        }
+        return true;
+    }
+
+    private async Task<bool> DownloadPackedDirectAsync(UpdateFileEntry entry, string packed, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand($"select inhalt from {UpdateTable} where pruefsumme = @sha order by teil", connection);
+        cmd.Parameters.AddWithValue("sha", entry.Sha256);
+        await using var reader = await cmd.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess, ct);
+        await using var output = File.Create(packed);
+        var parts = 0;
+        while (await reader.ReadAsync(ct))
+        {
+            await using var part = reader.GetStream(0);
+            await part.CopyToAsync(output, ct);
+            parts++;
+        }
+        if (parts == 0) throw new InvalidDataException($"Inhalt von {entry.File} fehlt in der Datenbank.");
+        return true;
+    }
+
+    /// <summary>
+    /// Erst über HTTPS (Port 443), sonst direkt (Port 5432). Scheitern beide, nennt der Fehler beide Ursachen –
+    /// die HTTPS-Ursache zuerst, denn die ist in Firmennetzen die entscheidende.
+    /// </summary>
+    private static async Task<T> HttpFirstAsync<T>(Func<CancellationToken, Task<T>> viaHttp, Func<CancellationToken, Task<T>> direct,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await viaHttp(ct);
+        }
+        catch (Exception httpError) when (httpError is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            try
+            {
+                return await direct(ct);
+            }
+            catch (Exception directError) when (directError is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                throw new IOException($"Über HTTPS (Port 443): {httpError.Message} – direkt (Port 5432): {directError.Message}", httpError);
+            }
         }
     }
 

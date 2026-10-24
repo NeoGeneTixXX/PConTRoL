@@ -48,8 +48,10 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
 - **Ausweichweg über die Datenbank** (wie beim CSV-NaViGaTOR, dieselbe Neon-Datenbank): Jedes neue Release wird direkt nach dem
   Veröffentlichen in die Datenbank hochgeladen (`tools\DbUpload`), zusätzlich legt es jeder PConTRoL-Rechner mit GitHub-Zugang dort ab.
   Die Tabelle `pcontrol_appdata` listet die Dateien des neuesten Updates (Name, Version, Größe, SHA-256), `pcontrol_update` hält ihren
-  Inhalt gzip-gepackt. Rechner ohne GitHub holen das Update von dort, geprüft über die Prüfsumme. Die Datenbank prüft das
-  Serverzertifikat nicht und klappt deshalb auch bei „PartialChain“. Voraussetzung: *Einstellungen → Datenbank* ist eingerichtet.
+  Inhalt gzip-gepackt. Rechner ohne GitHub holen das Update von dort, geprüft über die Prüfsumme.
+  Gelesen wird wie beim Navigator **über HTTPS (Port 443)**, denn der Postgres-Port 5432 ist in Firmennetzen oft gesperrt
+  („Failed to connect … 5432 … timed out“). Nur wenn HTTPS nicht klappt, wird es direkt über 5432 versucht.
+  Die Zertifikatskette wird dabei nicht verlangt, deshalb klappt es auch bei „PartialChain“. Voraussetzung: *Einstellungen → Datenbank* ist eingerichtet.
 - **Von Hand:** *Einstellungen → Programm → Nach Updates suchen*. Dort steht auch die installierte Version.
   Ist ein Update da, erscheint **Jetzt installieren**: Die Einstellungen werden gespeichert, dann läuft das Update wie oben.
 - Ein Update wird **nie automatisch während der Arbeit** eingespielt.
