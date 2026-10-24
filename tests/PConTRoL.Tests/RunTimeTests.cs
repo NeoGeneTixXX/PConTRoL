@@ -230,6 +230,18 @@ public sealed class RunTimeTests : IDisposable
         Assert.Equal(Npgsql.ChannelBinding.Require, b.ChannelBinding);
         Assert.Equal("user_1@ep-test-pooler.eu-central-1.aws.neon.tech/neondb", DatabaseConnection.Describe(cs));
 
+        // So kopiert Neon die Verbindung oft heraus – mit psql davor oder als Variable.
+        foreach (var pasted in new[]
+                 {
+                     "psql 'postgresql://user_1:geheim%21@ep-test-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'",
+                     "DATABASE_URL=\"postgresql://user_1:geheim%21@ep-test-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require\"",
+                     "  postgresql://user_1:geheim%21@ep-test-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require\r\n",
+                 })
+        {
+            Assert.Null(DatabaseConnection.TryBuild(pasted, out var pastedCs));
+            Assert.Equal("geheim!", new Npgsql.NpgsqlConnectionStringBuilder(pastedCs).Password);
+        }
+
         Assert.NotNull(DatabaseConnection.TryBuild("", out _));
         Assert.NotNull(DatabaseConnection.TryBuild("postgresql://host-ohne-db", out _));
     }

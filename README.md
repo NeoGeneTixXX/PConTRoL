@@ -62,7 +62,7 @@ PConTRoL kann auf mehreren Rechnern laufen:
 
 - **Pro Benutzer** gespeichert werden Pfad, Größe, Farben, Spalten und eingeklappte Gruppen, unter `%APPDATA%\PConTRoL\settings.json`.
 - **Gemeinsam für alle Rechner** gelten die Reihenfolge im Vorrat, die Gruppen, das Log, die Statistik und die Laufzeiten, unter `<Hauptordner>\_PConTRoL\`.
-- **Datenbank** (optional, *Einstellungen → Datenbank*): die Verbindungszeichenfolge von Neon (`postgresql://…`) einfügen und *Testen*.
+- **Datenbank** (optional, *Einstellungen → Datenbank*, nur für Updates): die Verbindungszeichenfolge von Neon (`postgresql://…`) einfügen und *Testen*.
   Sie wird per Windows-DPAPI verschlüsselt nur für diesen Windows-Benutzer gespeichert, also auf jedem Rechner einmal eintragen.
   PConTRoL legt dort nur eigene Tabellen an (`pcontrol_…`) und fasst die des Navigators nie an.
 
@@ -168,9 +168,8 @@ Je mehr Platten fertig werden, desto genauer wird die Schätzung.
 
   Gezählt werden je Stufe nur die jüngsten 30 Messungen, so passt sich die Schätzung an (neues Werkzeug, anderer Bediener).
   Der Median sorgt dafür, dass einzelne Ausreißer nicht stören.
-- Gespeichert wird in `<Hauptordner>\_PConTRoL\laufzeiten.jsonl`, gemeinsam für alle Rechner. Ist die Datenbank eingerichtet,
-  werden die Laufzeiten alle 10 Minuten mit der Tabelle `pcontrol_laufzeit` abgeglichen, in beide Richtungen.
-  Dadurch lernen alle Rechner von allen, auch wenn sie an verschiedenen Hauptordnern hängen. Ohne Datenbank oder Netz läuft alles weiter.
+- Gespeichert wird nur lokal in `<Hauptordner>\_PConTRoL\laufzeiten.jsonl`, gemeinsam für alle Rechner an diesem Hauptordner.
+  In die Datenbank kommen keine Laufzeiten.
 - Das Log (`ActionLog`) verzeichnet jede Messung als `LAUFZEIT`.
 
 ## Sicherheit
@@ -212,8 +211,8 @@ tests\PConTRoL.Tests xUnit-Tests (Datumslogik, Gruppen, Verschieben inkl. gesper
   - `StatisticsCsv` exportiert nach Excel.
 - **Laufzeiten** (`src\PConTRoL.Core\Timing`): `RunTimeTracker` misst, `RunTimeEstimator` schätzt, `QueueForecast` rechnet die Uhrzeiten
   der Warteschlange aus. `RunTimeStore` und `StatisticsStore` teilen sich `Storage\JsonLinesStore` (nur anhängen, Dubletten über die Id).
-- **Datenbank** (`src\PConTRoL.Core\Database`): `SharedDatabase` (Npgsql) legt die Tabellen `pcontrol_laufzeit`, `pcontrol_appdata`
-  und `pcontrol_update` an, gleicht Laufzeiten ab und speichert Updates. Die Verbindung steht nie im Repository.
+- **Datenbank** (`src\PConTRoL.Core\Database`): `SharedDatabase` (Npgsql) legt die Tabellen `pcontrol_appdata` und `pcontrol_update`
+  an und speichert dort Updates. Die Verbindung steht nie im Repository.
 - Die Kreisdiagramme zeichnet das kleine eigene Steuerelement `Views\PieChart.cs`.
   Eine Diagramm-Bibliothek (z. B. LiveCharts2 mit SkiaSharp) würde die EXE und jedes Update deutlich größer machen und mehr können, als hier gebraucht wird.
 

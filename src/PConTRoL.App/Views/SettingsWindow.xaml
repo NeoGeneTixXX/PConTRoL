@@ -120,7 +120,7 @@
                        Text="Beim Anlegen werden die gewählten .hop-Dateien (mit .lbl und .jpg) in den Ordner Kanban im Hauptordner verschoben. Ein Klick auf die Kachel schickt Kopien als Gruppe ans Ende der Maschine – beliebig oft. Änderungen an Kacheln gelten sofort, auch ohne „Speichern“." />
         </DockPanel>
 
-        <TextBlock Text="Datenbank (Laufzeiten und Updates)" Style="{StaticResource Section}" />
+        <TextBlock Text="Datenbank (Updates)" Style="{StaticResource Section}" />
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="140" />
@@ -139,7 +139,7 @@
                        Foreground="{StaticResource FgDim}" TextWrapping="Wrap" Margin="0,2,0,0" />
         </Grid>
         <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" Margin="140,4,0,0" TextWrapping="Wrap"
-                   Text="Die Verbindungszeichenfolge von Neon einfügen (postgresql://…), dieselbe Datenbank wie beim CSV-NaViGaTOR. Sie wird verschlüsselt nur für diesen Windows-Benutzer gespeichert. Darüber teilen alle Rechner die gemessenen Laufzeiten und holen Updates, auch wenn GitHub nicht erreichbar ist. Leer = ohne Datenbank; die Zeitschätzung läuft dann nur über den Hauptordner." />
+                   Text="Die Verbindungszeichenfolge von Neon einfügen (postgresql://…), dieselbe Datenbank wie beim CSV-NaViGaTOR. Sie wird verschlüsselt nur für diesen Windows-Benutzer gespeichert. Darüber holt PConTRoL Updates, auch wenn GitHub nicht erreichbar ist. Leer = ohne Datenbank. Die gemessenen Laufzeiten bleiben immer lokal im Hauptordner." />
 
         <TextBlock Text="Programm" Style="{StaticResource Section}" />
         <CheckBox x:Name="AutostartBox" Content="Mit Windows starten (im Tray)" />

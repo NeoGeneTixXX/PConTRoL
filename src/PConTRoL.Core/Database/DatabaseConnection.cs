@@ -80,9 +80,15 @@ public static class DatabaseConnection
         return builder;
     }
 
-    /// <summary>Entfernt umschließende Anführungszeichen, denn abgeschrieben wird die Zeichenfolge oft samt Schale.</summary>
-    private static string Unwrap(string text)
+    /// <summary>
+    /// Holt die Adresse aus dem, was tatsächlich eingefügt wird: Neon gibt sie oft als <c>psql 'postgresql://…'</c> aus,
+    /// andere als <c>DATABASE_URL="postgresql://…"</c>. Steht irgendwo eine postgres-Adresse, gilt nur sie.
+    /// Sonst werden nur umschließende Anführungszeichen entfernt (Form <c>Host=…;Database=…</c>).
+    /// </summary>
+    internal static string Unwrap(string text)
     {
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"postgres(?:ql)?://[^\s'""]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success) return match.Value;
         while (text.Length >= 2 && (text[0] == '"' || text[0] == '\'') && text[^1] == text[0]) text = text[1..^1].Trim();
         return text;
     }

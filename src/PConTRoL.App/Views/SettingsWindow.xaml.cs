@@ -18,15 +18,13 @@ public partial class SettingsWindow : Window
     private readonly bool _popupWasVisible;
     private readonly UpdateService? _updates;
     private readonly QueueController? _controller;
-    private readonly DatabaseService? _database;
     private bool _loading = true;
 
     /// <param name="previewMainScale">Vorschau der Größe im Hauptfenster; null = gespeicherten Wert wiederherstellen.</param>
     /// <param name="updates">Für „Nach Updates suchen“; null = nicht verfügbar.</param>
     /// <param name="controller">Für die Kanban-Kacheln (gespeicherter Hauptordner); null = kein Hauptordner.</param>
-    /// <param name="database">Für den Stand der Datenbank; null = nicht verfügbar.</param>
     public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale,
-        UpdateService? updates = null, QueueController? controller = null, DatabaseService? database = null)
+        UpdateService? updates = null, QueueController? controller = null)
     {
         InitializeComponent();
         _original = current.Clone();
@@ -35,7 +33,6 @@ public partial class SettingsWindow : Window
         _previewMainScale = previewMainScale;
         _updates = updates;
         _controller = controller;
-        _database = database;
         _popupWasVisible = popup.IsVisible;
         ShowUpdateState();
         BuildKanbanRows();
@@ -500,8 +497,7 @@ public partial class SettingsWindow : Window
             return;
         }
         var error = DatabaseConnection.TryBuild(text, out _);
-        DatabaseStatus.Text = error ?? DatabaseConnection.Describe(text)
-            + (text == _original.DatabaseConnection && _database != null ? "  ·  " + _database.StatusText : "  ·  noch nicht gespeichert");
+        DatabaseStatus.Text = error ?? DatabaseConnection.Describe(text) + (text == _original.DatabaseConnection ? "" : "  ·  noch nicht gespeichert");
     }
 
     private void OnDatabaseChanged(object sender, RoutedEventArgs e)
@@ -522,12 +518,15 @@ public partial class SettingsWindow : Window
         DatabaseStatus.Text = "Verbinde …";
         try
         {
-            var count = await Task.Run(() => new SharedDatabase(cs).TestAsync());
-            DatabaseStatus.Text = $"Verbindung klappt: {DatabaseConnection.Describe(DatabaseBox.Password)}  ·  {count} Laufzeiten gespeichert";
+            var version = await Task.Run(() => new SharedDatabase(cs).TestAsync());
+            DatabaseStatus.Text = $"Verbindung klappt: {DatabaseConnection.Describe(DatabaseBox.Password)}  ·  "
+                + (version != null ? $"Update in der Datenbank: Version {version}" : "noch kein Update in der Datenbank");
         }
         catch (Exception ex)
         {
-            DatabaseStatus.Text = "Keine Verbindung: " + UpdateService.Describe(ex, "der Datenbank");
+            DatabaseStatus.Text = "Keine Verbindung: " + UpdateService.Describe(ex, "der Datenbank")
+                + $"  (Details in {SettingsStore.Folder}\\fehler.log)";
+            ErrorLog.Write($"Datenbank-Test fehlgeschlagen ({DatabaseConnection.Describe(DatabaseBox.Password)})", ex);
         }
         finally
         {

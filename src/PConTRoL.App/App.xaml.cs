@@ -65,7 +65,7 @@ public partial class App : Application
         _tray.Exit += (_, _) => ExitApp();
         status.PropertyChanged += (_, _) => _tray.SetToolTip("PConTRoL – läuft: " + status.CurrentName);
 
-        _database = new DatabaseService(() => _main?.RunTimes);
+        _database = new DatabaseService();
         _database.Configure(settings.DatabaseConnection);
         _main.Database = _database;
 
@@ -91,7 +91,6 @@ public partial class App : Application
         }
 
         _updates.Start();
-        _database.Start();
     }
 
     /// <summary>

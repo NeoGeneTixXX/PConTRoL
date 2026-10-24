@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Gemeinsame Datenbank (Neon/PostgreSQL) wie im CSV-NaViGaTOR: Laufzeiten und Updates -->
+    <!-- Gemeinsame Datenbank (Neon/PostgreSQL) wie im CSV-NaViGaTOR, nur für Updates -->
     <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
 

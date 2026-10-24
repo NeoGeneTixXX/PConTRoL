@@ -2,22 +2,17 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using Npgsql;
 using NpgsqlTypes;
-using PConTRoL.Core.Timing;
 
 namespace PConTRoL.Core.Database;
 
 /// <summary>Eine Datei des neuesten Updates in der Datenbank (Zeile aus <see cref="SharedDatabase.AppDataTable"/>).</summary>
 public sealed record UpdateFileEntry(string File, string Version, long Size, string Sha256, DateTime ChangedUtc);
 
-public sealed record RunTimeSyncResult(int Uploaded, int Downloaded, int Total);
-
 /// <summary>
 /// Gemeinsame Datenbank (Neon/PostgreSQL), dieselbe wie beim CSV-NaViGaTOR. PConTRoL legt dort nur eigene Tabellen an
-/// (<c>pcontrol_…</c>) und fasst die des Navigators nie an.
+/// (<c>pcontrol_…</c>) und fasst die des Navigators nie an. Sie dient nur den Updates; Laufzeiten bleiben lokal im Hauptordner.
 ///
-/// - <b>Laufzeiten</b>: jede gemessene Platte, von allen Rechnern. Abgleich in beide Richtungen mit
-///   <c>_PConTRoL\laufzeiten.jsonl</c>; ohne Datenbank läuft die Zeitschätzung trotzdem.
-/// - <b>Updates</b> wie im Navigator: <see cref="AppDataTable"/> listet die Dateien des neuesten Updates
+/// <b>Updates</b> wie im Navigator: <see cref="AppDataTable"/> listet die Dateien des neuesten Updates
 ///   (Name, Version, Größe, SHA-256), <see cref="UpdateTable"/> hält ihren Inhalt gzip-gepackt, über die Prüfsumme
 ///   adressiert. Große Dateien (das Velopack-Paket hat ~70 MB) liegen dort in Teilen zu <see cref="PartSize"/>.
 /// </summary>
@@ -25,7 +20,6 @@ public sealed class SharedDatabase(string connectionString)
 {
     public const string AppDataTable = "pcontrol_appdata";
     public const string UpdateTable = "pcontrol_update";
-    public const string RunTimeTable = "pcontrol_laufzeit";
     public const int PartSize = 8 * 1024 * 1024;
 
     private bool _schemaReady;
@@ -55,21 +49,6 @@ public sealed class SharedDatabase(string connectionString)
     private static async Task EnsureSchemaAsync(NpgsqlConnection connection, CancellationToken ct)
     {
         const string sql = $"""
-            create table if not exists {RunTimeTable} (
-                id text primary key,
-                start_utc timestamptz not null,
-                ende_utc timestamptz not null,
-                sekunden double precision not null,
-                material text not null default '',
-                dim_x double precision not null default 0,
-                dim_y double precision not null default 0,
-                dim_z double precision not null default 0,
-                teile integer not null default 0,
-                nest_job text not null default '',
-                datei text not null default '',
-                rechner text not null default '',
-                angelegt timestamptz not null default now()
-            );
             create table if not exists {AppDataTable} (
                 datei text primary key,
                 version text not null default '',
@@ -90,75 +69,9 @@ public sealed class SharedDatabase(string connectionString)
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    /// <summary>Verbindung prüfen (legt dabei die Tabellen an). Liefert die Zahl der Laufzeiten in der Datenbank.</summary>
-    public async Task<long> TestAsync(CancellationToken ct = default)
-    {
-        await using var connection = await OpenAsync(ct);
-        await using var cmd = new NpgsqlCommand($"select count(*) from {RunTimeTable}", connection);
-        return (long)(await cmd.ExecuteScalarAsync(ct))!;
-    }
-
-    // ------------------------------------------------------------------ Laufzeiten
-
-    /// <summary>Lokale Laufzeiten hochladen, die der Datenbank fehlen, und fremde in die lokale Datei übernehmen.</summary>
-    public async Task<RunTimeSyncResult> SyncRunTimesAsync(RunTimeStore store, CancellationToken ct = default)
-    {
-        await using var connection = await OpenAsync(ct);
-
-        var remote = new List<RunTimeRecord>();
-        await using (var cmd = new NpgsqlCommand(
-                         $"select id, start_utc, ende_utc, sekunden, material, dim_x, dim_y, dim_z, teile, nest_job, datei, rechner from {RunTimeTable}",
-                         connection))
-        await using (var reader = await cmd.ExecuteReaderAsync(ct))
-        {
-            while (await reader.ReadAsync(ct))
-                remote.Add(new RunTimeRecord
-                {
-                    Id = reader.GetString(0),
-                    StartUtc = reader.GetDateTime(1),
-                    EndUtc = reader.GetDateTime(2),
-                    Seconds = reader.GetDouble(3),
-                    Material = reader.GetString(4),
-                    DimX = reader.GetDouble(5),
-                    DimY = reader.GetDouble(6),
-                    DimZ = reader.GetDouble(7),
-                    Parts = reader.GetInt32(8),
-                    NestJob = reader.GetString(9),
-                    File = reader.GetString(10),
-                    Computer = reader.GetString(11),
-                });
-        }
-
-        var remoteIds = new HashSet<string>(remote.Select(r => r.Id), StringComparer.OrdinalIgnoreCase);
-        var missing = store.Load().Where(r => !remoteIds.Contains(r.Id)).ToList();
-        foreach (var batch in missing.Chunk(500)) await InsertRunTimesAsync(connection, batch, ct);
-
-        var downloaded = store.AddRange(remote);
-        return new RunTimeSyncResult(missing.Count, downloaded, remote.Count + missing.Count);
-    }
-
-    private static async Task InsertRunTimesAsync(NpgsqlConnection connection, RunTimeRecord[] batch, CancellationToken ct)
-    {
-        await using var cmd = new NpgsqlCommand($"""
-            insert into {RunTimeTable} (id, start_utc, ende_utc, sekunden, material, dim_x, dim_y, dim_z, teile, nest_job, datei, rechner)
-            select * from unnest(@id, @start, @ende, @sek, @mat, @dx, @dy, @dz, @teile, @job, @datei, @rechner)
-            on conflict (id) do nothing
-            """, connection);
-        static DateTime Utc(DateTime t) => t.Kind == DateTimeKind.Utc ? t : DateTime.SpecifyKind(t.ToUniversalTime(), DateTimeKind.Utc);
-        cmd.Parameters.AddWithValue("id", batch.Select(r => r.Id).ToArray());
-        cmd.Parameters.AddWithValue("start", NpgsqlDbType.Array | NpgsqlDbType.TimestampTz, batch.Select(r => Utc(r.StartUtc)).ToArray());
-        cmd.Parameters.AddWithValue("ende", NpgsqlDbType.Array | NpgsqlDbType.TimestampTz, batch.Select(r => Utc(r.EndUtc)).ToArray());
-        cmd.Parameters.AddWithValue("sek", batch.Select(r => r.Seconds).ToArray());
-        cmd.Parameters.AddWithValue("mat", batch.Select(r => r.Material).ToArray());
-        cmd.Parameters.AddWithValue("dx", batch.Select(r => r.DimX).ToArray());
-        cmd.Parameters.AddWithValue("dy", batch.Select(r => r.DimY).ToArray());
-        cmd.Parameters.AddWithValue("dz", batch.Select(r => r.DimZ).ToArray());
-        cmd.Parameters.AddWithValue("teile", batch.Select(r => r.Parts).ToArray());
-        cmd.Parameters.AddWithValue("job", batch.Select(r => r.NestJob).ToArray());
-        cmd.Parameters.AddWithValue("datei", batch.Select(r => r.File).ToArray());
-        cmd.Parameters.AddWithValue("rechner", batch.Select(r => r.Computer).ToArray());
-        await cmd.ExecuteNonQueryAsync(ct);
-    }
+    /// <summary>Verbindung prüfen (legt dabei die Tabellen an). Liefert die Version des Updates in der Datenbank (null = keins).</summary>
+    public async Task<string?> TestAsync(CancellationToken ct = default) =>
+        (await GetUpdateFilesAsync(ct)).FirstOrDefault(f => f.File.EndsWith("-full.nupkg", StringComparison.OrdinalIgnoreCase))?.Version;
 
     // ------------------------------------------------------------------ Updates
 

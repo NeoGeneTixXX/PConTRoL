@@ -100,11 +100,9 @@ public partial class MainWindow : Window, IJobListHost
     /// <summary>Für „Nach Updates suchen“ in den Einstellungen (von App gesetzt).</summary>
     public UpdateService? Updates { get; set; }
 
-    /// <summary>Gemeinsame Datenbank für Laufzeiten und Updates (von App gesetzt).</summary>
+    /// <summary>Gemeinsame Datenbank als Update-Quelle (von App gesetzt).</summary>
     public DatabaseService? Database { get; set; }
 
-    /// <summary>Gemessene Laufzeiten im Hauptordner (null = kein Hauptordner).</summary>
-    public RunTimeStore? RunTimes => _runTimes;
 
     // ---------- Update-Hinweis ----------
 
@@ -800,7 +798,7 @@ public partial class MainWindow : Window, IJobListHost
     public void OpenSettings()
     {
         CaptureLayout();
-        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates, _controller, Database);
+        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates, _controller);
         if (IsVisible) dlg.Owner = this;
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var saved = dlg.ShowDialog() == true;
@@ -827,7 +825,6 @@ public partial class MainWindow : Window, IJobListHost
         UpdateDetails(); // Zusammenfassen hängt von den sichtbaren Spalten ab
         if (rootChanged) ApplyRoot();
         if (databaseChanged) Database?.Configure(_settings.DatabaseConnection);
-        if (databaseChanged || rootChanged) _ = Database?.SyncNowAsync();
 
         // „Jetzt installieren“ in den Einstellungen: erst speichern (oben), dann wie der Update-Hinweis.
         if (dlg.InstallUpdateRequested) UpdateRequested?.Invoke(this, EventArgs.Empty);
