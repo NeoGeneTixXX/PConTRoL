@@ -34,7 +34,7 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
 
 ### Automatische Updates
 
-- PConTRoL prüft **beim Start und danach alle 4 Stunden**, ob es auf GitHub ein neues Release gibt. Ist eines da, wird es im Hintergrund heruntergeladen.
+- PConTRoL prüft **beim Start und danach jede Stunde**, ob es ein neues Release gibt (GitHub, sonst Hauptordner, sonst Datenbank). Ist eines da, wird es im Hintergrund heruntergeladen.
 - Danach erscheinen ein gelber Hinweis im Hauptfenster und eine Meldung am Tray-Symbol: **„Neue Version x.y.z, jetzt aktualisieren?“**, zusammen mit den Änderungsnotizen.
   - **Jetzt aktualisieren**: PConTRoL beendet sich kurz, spielt das Update ein und startet neu.
     Läuft gerade eine Aktion (Verschieben, Datum setzen), wird nichts eingespielt. Dann einfach danach noch einmal klicken.
@@ -45,6 +45,11 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
   Typischer Fall: Maschinen-PC ohne Windows Update, Fehler **„PartialChain“** (es fehlen Stammzertifikate wie
   *USERTrust ECC Certification Authority* oder *ISRG Root X1*). Ohne einen solchen Rechner kann man auch von Hand
   `releases.win.json` und `PConTRoL-<Version>-full.nupkg` von der Release-Seite in diesen Ordner kopieren.
+- **Ausweichweg über die Datenbank** (wie beim CSV-NaViGaTOR, dieselbe Neon-Datenbank): Jedes neue Release wird direkt nach dem
+  Veröffentlichen in die Datenbank hochgeladen (`tools\DbUpload`), zusätzlich legt es jeder PConTRoL-Rechner mit GitHub-Zugang dort ab.
+  Die Tabelle `pcontrol_appdata` listet die Dateien des neuesten Updates (Name, Version, Größe, SHA-256), `pcontrol_update` hält ihren
+  Inhalt gzip-gepackt. Rechner ohne GitHub holen das Update von dort, geprüft über die Prüfsumme. Die Datenbank prüft das
+  Serverzertifikat nicht und klappt deshalb auch bei „PartialChain“. Voraussetzung: *Einstellungen → Datenbank* ist eingerichtet.
 - **Von Hand:** *Einstellungen → Programm → Nach Updates suchen*. Dort steht auch die installierte Version.
   Ist ein Update da, erscheint **Jetzt installieren**: Die Einstellungen werden gespeichert, dann läuft das Update wie oben.
 - Ein Update wird **nie automatisch während der Arbeit** eingespielt.
@@ -56,7 +61,10 @@ Deinstallieren geht über *Windows-Einstellungen → Apps*.
 PConTRoL kann auf mehreren Rechnern laufen:
 
 - **Pro Benutzer** gespeichert werden Pfad, Größe, Farben, Spalten und eingeklappte Gruppen, unter `%APPDATA%\PConTRoL\settings.json`.
-- **Gemeinsam für alle Rechner** gelten die Reihenfolge im Vorrat, die Gruppen, das Log und die Statistik, unter `<Hauptordner>\_PConTRoL\`.
+- **Gemeinsam für alle Rechner** gelten die Reihenfolge im Vorrat, die Gruppen, das Log, die Statistik und die Laufzeiten, unter `<Hauptordner>\_PConTRoL\`.
+- **Datenbank** (optional, *Einstellungen → Datenbank*): die Verbindungszeichenfolge von Neon (`postgresql://…`) einfügen und *Testen*.
+  Sie wird per Windows-DPAPI verschlüsselt nur für diesen Windows-Benutzer gespeichert, also auf jedem Rechner einmal eintragen.
+  PConTRoL legt dort nur eigene Tabellen an (`pcontrol_…`) und fasst die des Navigators nie an.
 
 ## Bedienung
 
@@ -113,7 +121,9 @@ Unten im Fenster stehen zum markierten Auftrag das Vorschaubild (.jpg aus Better
 ### Tray und Pop-up
 
 - Fenster schließen oder minimieren: PConTRoL läuft im Infobereich weiter.
-- **Klick** aufs Tray-Symbol: Pop-up unten rechts mit dem laufenden Auftrag und den nächsten 10.
+- **Klick** aufs Tray-Symbol: Pop-up unten rechts als **Zeitleiste**. Es zeigt den laufenden Auftrag mit Restzeit und die nächsten 5, jeweils mit der
+  Uhrzeit, zu der sie voraussichtlich drankommen, und ihrer geschätzten Dauer. Oben rechts steht, wann die Maschine voraussichtlich leer ist.
+  Das Material steht dabei, wenn es wechselt (dann muss eine andere Platte aufgelegt werden). Maus auf eine Zeile: alle Daten und worauf die Schätzung beruht.
 - **Doppelklick** aufs Tray-Symbol: Hauptfenster.
 - **Rechtsklick** aufs Tray-Symbol: Menü, darin **Beenden**.
 - Farben, Deckkraft und „Immer im Vordergrund“ stellst du unter *Einstellungen → Pop-up* ein, mit Live-Vorschau.
@@ -140,6 +150,28 @@ Der Button **Statistik** zeigt für jedes Material ein Kreisdiagramm mit **Ausnu
 - **Zeitraum:** oben auswählen, z. B. *Dieser Monat* oder *Letztes Jahr*, oder selbst *von/bis* eintragen.
 - **Export:** *Übersicht als CSV* (je Material) und *Platten als CSV* (jede Platte einzeln), jeweils für den gewählten Zeitraum, direkt in Excel zu öffnen.
 - Gespeichert wird in `<Hauptordner>\_PConTRoL\statistik.jsonl`, eine Zeile pro Platte, gemeinsam für alle Rechner.
+
+### Laufzeiten und Zeitschätzung
+
+PConTRoL misst, wie lange die Maschine für jede Platte braucht, und schätzt daraus die Dauer der Aufträge an der Maschine.
+Je mehr Platten fertig werden, desto genauer wird die Schätzung.
+
+- **Gemessen** wird vom Moment, in dem ein Auftrag in `_Input` nach oben rückt (der vorige ist fertig oder die Maschine war leer),
+  bis er fertig aus `_Input` verschwindet. Das Auflegen und Abräumen ist also mit drin, genau wie bei der Planung.
+  Der Auftrag, der beim Start von PConTRoL schon läuft, wird nicht gemessen, denn sein Beginn ist unbekannt.
+  Zeiten unter 20 Sekunden oder über 4 Stunden (Pause, Feierabend, Störung) werden verworfen.
+- **Geschätzt** wird je Plattentyp, vom genauesten zum gröbsten, und zwar aus der ersten Stufe, für die es mindestens 3 Messungen gibt:
+  1. gleiches Material, gleiches Maß, gleich viele Teile: Median der Messungen
+  2. gleiches Material und Maß: Grundzeit + Zeit je Teil (Ausgleichsgerade über die Teilezahl)
+  3. gleiches Material, beliebiges Maß
+  4. alle Platten
+
+  Gezählt werden je Stufe nur die jüngsten 30 Messungen, so passt sich die Schätzung an (neues Werkzeug, anderer Bediener).
+  Der Median sorgt dafür, dass einzelne Ausreißer nicht stören.
+- Gespeichert wird in `<Hauptordner>\_PConTRoL\laufzeiten.jsonl`, gemeinsam für alle Rechner. Ist die Datenbank eingerichtet,
+  werden die Laufzeiten alle 10 Minuten mit der Tabelle `pcontrol_laufzeit` abgeglichen, in beide Richtungen.
+  Dadurch lernen alle Rechner von allen, auch wenn sie an verschiedenen Hauptordnern hängen. Ohne Datenbank oder Netz läuft alles weiter.
+- Das Log (`ActionLog`) verzeichnet jede Messung als `LAUFZEIT`.
 
 ## Sicherheit
 
@@ -178,6 +210,10 @@ tests\PConTRoL.Tests xUnit-Tests (Datumslogik, Gruppen, Verschieben inkl. gesper
   - `StatisticsStore` speichert sie (JSON Lines, nur anhängen, Dubletten über den SHA-256 der .lbl).
   - `StatisticsService` wertet aus (flächengewichtet je Material, Zeitfilter).
   - `StatisticsCsv` exportiert nach Excel.
+- **Laufzeiten** (`src\PConTRoL.Core\Timing`): `RunTimeTracker` misst, `RunTimeEstimator` schätzt, `QueueForecast` rechnet die Uhrzeiten
+  der Warteschlange aus. `RunTimeStore` und `StatisticsStore` teilen sich `Storage\JsonLinesStore` (nur anhängen, Dubletten über die Id).
+- **Datenbank** (`src\PConTRoL.Core\Database`): `SharedDatabase` (Npgsql) legt die Tabellen `pcontrol_laufzeit`, `pcontrol_appdata`
+  und `pcontrol_update` an, gleicht Laufzeiten ab und speichert Updates. Die Verbindung steht nie im Repository.
 - Die Kreisdiagramme zeichnet das kleine eigene Steuerelement `Views\PieChart.cs`.
   Eine Diagramm-Bibliothek (z. B. LiveCharts2 mit SkiaSharp) würde die EXE und jedes Update deutlich größer machen und mehr können, als hier gebraucht wird.
 
@@ -222,7 +258,16 @@ git push origin v1.3.0
    - packt sie mit Velopack
    - veröffentlicht sie unter *Releases*
 
-   Den Fortschritt siehst du im Reiter *Actions*. Spätestens 4 Stunden danach, oder beim nächsten Start, meldet sich das Update auf dem Nesting-Rechner.
+   Den Fortschritt siehst du im Reiter *Actions*.
+6. Ist das Release fertig, es sofort in die Datenbank hochladen. Die Verbindung kommt aus den PConTRoL-Einstellungen dieses
+   Windows-Benutzers oder aus der Umgebungsvariable `PCONTROL_DB`:
+
+```
+cd tools\DbUpload
+dotnet run -c Release
+```
+
+   Spätestens eine Stunde danach, oder beim nächsten Start, meldet sich das Update auf allen Rechnern.
 
 Hat sich ein Fehler eingeschlichen, nicht das Release löschen, sondern einfach eine höhere Version mit der Korrektur veröffentlichen.
 Velopack aktualisiert nur auf höhere Versionsnummern.

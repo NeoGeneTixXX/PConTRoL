@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Net.Http;
 using System.Windows.Threading;
 using PConTRoL.Core;
+using PConTRoL.Core.Database;
 using PConTRoL.Core.Updates;
 using Velopack;
 using Velopack.Sources;
@@ -23,11 +24,13 @@ public enum UpdateCheckState
 public sealed record UpdateCheckResult(UpdateCheckState State, string? Version = null, string? Error = null);
 
 /// <summary>
-/// Automatische Updates über GitHub Releases (Velopack), mit Ausweichweg über den Hauptordner.
+/// Automatische Updates über GitHub Releases (Velopack), mit zwei Ausweichwegen: Hauptordner und Datenbank.
 ///
-/// - Rechner, die GitHub erreichen, legen das neueste Paket zusätzlich in &lt;Hauptordner&gt;\_PConTRoL\updates\ ab.
+/// - Rechner, die GitHub erreichen, legen das neueste Paket zusätzlich in &lt;Hauptordner&gt;\_PConTRoL\updates\ ab
+///   und, wenn eingerichtet, in der gemeinsamen Datenbank (wie beim CSV-NaViGaTOR: Dateiliste + gzip-Inhalte).
 ///   Rechner ohne funktionierende GitHub-Verbindung (z. B. Maschinen-PC mit veralteten Stammzertifikaten,
-///   Fehler „PartialChain“) holen das Update dann von dort.
+///   Fehler „PartialChain“) holen das Update dann von dort. Die Datenbank prüft das Zertifikat nicht und klappt deshalb
+///   auch auf solchen Rechnern.
 /// - Prüft beim Start und dann alle <see cref="CheckInterval"/> im Hintergrund.
 /// - Lädt ein neues Release still herunter, spielt es aber NIE selbst ein:
 ///   nur nach Bestätigung (<see cref="ApplyAndRestart"/>) oder beim nächsten Programmstart
@@ -37,17 +40,27 @@ public sealed record UpdateCheckResult(UpdateCheckState State, string? Version =
 public sealed class UpdateService
 {
     public const string RepoUrl = "https://github.com/NeoGeneTixXX/PConTRoL";
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(4);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);
 
     private readonly UpdateManager _manager = new(new GithubSource(RepoUrl, null, false));
     private readonly DispatcherTimer _timer = new() { Interval = CheckInterval };
     private readonly Func<string?> _mainFolder;
+    private readonly Func<SharedDatabase?> _database;
     private Task<UpdateCheckResult>? _running;
     private UpdateManager? _pendingManager;
     private int _mirroring;
 
     /// <param name="mainFolder">Aktueller Hauptordner (für die Update-Ablage in _PConTRoL\updates).</param>
-    public UpdateService(Func<string?>? mainFolder = null) => _mainFolder = mainFolder ?? (() => null);
+    /// <param name="database">Gemeinsame Datenbank (null = keine eingerichtet).</param>
+    public UpdateService(Func<string?>? mainFolder = null, Func<SharedDatabase?>? database = null)
+    {
+        _mainFolder = mainFolder ?? (() => null);
+        _database = database ?? (() => null);
+    }
+
+    /// <summary>Lokale Ablage: von GitHub geladenes Paket (zum Weitergeben) bzw. aus der Datenbank geladenes Update.</summary>
+    private static string CacheFolder { get; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PConTRoL-Updates");
 
     /// <summary>Heruntergeladenes, noch nicht eingespieltes Update (oder null).</summary>
     public VelopackAsset? Pending { get; private set; }
@@ -94,8 +107,8 @@ public sealed class UpdateService
     }
 
     /// <summary>
-    /// Erst GitHub. Klappt das, wird das neueste Paket zusätzlich im Hauptordner abgelegt (für Rechner ohne
-    /// funktionierende GitHub-Verbindung). Klappt GitHub nicht, wird die Ablage im Hauptordner benutzt.
+    /// Erst GitHub. Klappt das, wird das neueste Paket zusätzlich im Hauptordner und in der Datenbank abgelegt
+    /// (für Rechner ohne funktionierende GitHub-Verbindung). Klappt GitHub nicht: erst der Hauptordner, dann die Datenbank.
     /// </summary>
     private async Task<UpdateCheckResult> RunCheckAsync()
     {
@@ -103,29 +116,82 @@ public sealed class UpdateService
         try
         {
             var result = await CheckWithAsync(_manager, "GitHub");
-            _ = Task.Run(MirrorToMainFolderAsync); // Download + Prüfsumme (~70 MB) nicht im UI-Thread
+            _ = Task.Run(MirrorAsync); // Download + Prüfsumme (~70 MB) nicht im UI-Thread
             return result;
         }
         catch (Exception ex)
         {
-            // Kein Netz, Zertifikat, Rate-Limit … – dann die Ablage im Hauptordner versuchen.
+            // Kein Netz, Zertifikat, Rate-Limit … – dann die Ausweichwege versuchen.
             githubError = ex;
             UpdateLog.Write("Update-Prüfung über GitHub fehlgeschlagen", ex);
         }
 
+        var errors = new List<string> { Describe(githubError) };
+        UpdateCheckResult? fallback = null;
+
         var folder = MirrorFolder();
         if (folder == null || !File.Exists(Path.Combine(folder, UpdateFeed.FeedFileName)))
-            return new(UpdateCheckState.Failed,
-                Error: Describe(githubError) + " Im Hauptordner (_PConTRoL\\updates) liegt auch kein Update.");
-        try
+            errors.Add("Im Hauptordner (_PConTRoL\\updates) liegt kein Update.");
+        else
         {
-            return await CheckWithAsync(new UpdateManager(new SimpleFileSource(new DirectoryInfo(folder))), "Hauptordner");
+            try
+            {
+                fallback = await CheckWithAsync(new UpdateManager(new SimpleFileSource(new DirectoryInfo(folder))), "Hauptordner");
+                if (fallback.State == UpdateCheckState.Ready) return fallback;
+            }
+            catch (Exception ex)
+            {
+                UpdateLog.Write("Update über den Hauptordner fehlgeschlagen", ex);
+                errors.Add("Hauptordner: " + Describe(ex));
+            }
         }
-        catch (Exception ex)
+
+        // Die Ablage im Hauptordner kann veraltet sein: deshalb auch dann noch die Datenbank fragen.
+        var db = _database();
+        if (db == null) errors.Add("Keine Datenbank eingerichtet.");
+        else
         {
-            UpdateLog.Write("Update über den Hauptordner fehlgeschlagen", ex);
-            return new(UpdateCheckState.Failed, Error: Describe(githubError) + " Hauptordner: " + Describe(ex));
+            try
+            {
+                var result = await CheckDatabaseAsync(db);
+                if (result.State == UpdateCheckState.Ready || fallback == null) return result;
+            }
+            catch (Exception ex)
+            {
+                UpdateLog.Write("Update über die Datenbank fehlgeschlagen", ex);
+                errors.Add("Datenbank: " + Describe(ex, "der Datenbank"));
+            }
         }
+
+        return fallback ?? new(UpdateCheckState.Failed, Error: string.Join(" ", errors));
+    }
+
+    /// <summary>
+    /// Wie im Navigator: Dateiliste aus der Datenbank lesen und nur dann, wenn dort eine neuere Version liegt, die Dateien
+    /// laden (Prüfsumme geprüft). Daraus wird dann wie aus einem Ordner aktualisiert.
+    /// </summary>
+    private async Task<UpdateCheckResult> CheckDatabaseAsync(SharedDatabase db)
+    {
+        var files = await Task.Run(() => db.GetUpdateFilesAsync());
+        var feed = files.FirstOrDefault(f => f.File.Equals(UpdateFeed.FeedFileName, StringComparison.OrdinalIgnoreCase));
+        var package = files.FirstOrDefault(f => f.File.EndsWith("-full.nupkg", StringComparison.OrdinalIgnoreCase));
+        if (feed == null || package == null) throw new InvalidOperationException("In der Datenbank liegt noch kein Update.");
+
+        if (Version.TryParse(package.Version, out var offered) && Version.TryParse(CurrentVersion, out var current) && offered <= current)
+            return Pending != null ? new(UpdateCheckState.Ready, Pending.Version.ToString()) : new(UpdateCheckState.UpToDate);
+
+        await Task.Run(async () =>
+        {
+            foreach (var entry in new[] { package, feed })
+            {
+                var target = Path.Combine(CacheFolder, entry.File);
+                if (File.Exists(target) && new FileInfo(target).Length == entry.Size && await SharedDatabase.Sha256Async(target) == entry.Sha256)
+                    continue;
+                await db.DownloadUpdateFileAsync(entry, target);
+            }
+            DeleteOldPackages(CacheFolder, package.File);
+        });
+        return await CheckWithAsync(new UpdateManager(new SimpleFileSource(new DirectoryInfo(CacheFolder))), "Datenbank");
     }
 
     /// <summary>Prüft eine Quelle und lädt ein neues Release herunter. Fehler werden weitergereicht.</summary>
@@ -156,57 +222,114 @@ public sealed class UpdateService
     }
 
     /// <summary>
-    /// Legt das neueste Komplettpaket (Prüfsumme geprüft) samt passender releases.win.json im Hauptordner ab.
+    /// Holt das neueste Komplettpaket (Prüfsumme geprüft) von GitHub in die lokale Ablage und gibt es weiter:
+    /// samt passender releases.win.json in den Hauptordner und in die Datenbank.
     /// Läuft im Hintergrund nur auf Rechnern, die GitHub erreichen; Fehler stören nie.
     /// </summary>
-    private async Task MirrorToMainFolderAsync()
+    private async Task MirrorAsync()
     {
         var folder = MirrorFolder();
-        if (folder == null || Interlocked.Exchange(ref _mirroring, 1) == 1) return;
+        var db = _database();
+        if ((folder == null && db == null) || Interlocked.Exchange(ref _mirroring, 1) == 1) return;
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
             var package = UpdateFeed.LatestFull(await http.GetStringAsync($"{RepoUrl}/releases/latest/download/{UpdateFeed.FeedFileName}"));
             if (package == null) return;
 
-            Directory.CreateDirectory(folder);
-            var target = Path.Combine(folder, package.FileName);
-            if (!File.Exists(target) || new FileInfo(target).Length != package.Size)
+            Directory.CreateDirectory(CacheFolder);
+            var local = Path.Combine(CacheFolder, package.FileName);
+            if (!UpdateFeed.Matches(local, package))
             {
-                var tmp = target + ".tmp-" + Environment.MachineName;
+                var tmp = local + ".tmp-" + Environment.MachineName;
                 await using (var source = await http.GetStreamAsync($"{RepoUrl}/releases/download/v{package.Version.ToString(3)}/{package.FileName}"))
                 await using (var file = File.Create(tmp))
                     await source.CopyToAsync(file);
                 if (!UpdateFeed.Matches(tmp, package))
                 {
                     File.Delete(tmp);
-                    UpdateLog.Write($"Ablage im Hauptordner: Prüfsumme von {package.FileName} stimmt nicht – verworfen.");
+                    UpdateLog.Write($"Prüfsumme von {package.FileName} stimmt nicht – verworfen.");
                     return;
                 }
+                File.Move(tmp, local, overwrite: true);
+            }
+            var localFeed = Path.Combine(CacheFolder, UpdateFeed.FeedFileName);
+            WriteIfChanged(localFeed, package.FeedJson);
+            DeleteOldPackages(CacheFolder, package.FileName);
+
+            if (folder != null) MirrorToFolder(folder, package, local);
+            if (db != null) await MirrorToDatabaseAsync(db, package, local, localFeed);
+        }
+        catch (Exception ex)
+        {
+            UpdateLog.Write("Weitergeben des Updates fehlgeschlagen", ex);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _mirroring, 0);
+        }
+    }
+
+    private static void MirrorToFolder(string folder, FeedPackage package, string local)
+    {
+        try
+        {
+            Directory.CreateDirectory(folder);
+            var target = Path.Combine(folder, package.FileName);
+            if (!File.Exists(target) || new FileInfo(target).Length != package.Size)
+            {
+                var tmp = target + ".tmp-" + Environment.MachineName;
+                File.Copy(local, tmp, overwrite: true);
                 File.Move(tmp, target, overwrite: true);
                 UpdateLog.Write($"Version {package.Version.ToString(3)} im Hauptordner abgelegt ({folder}).");
             }
-
-            var feed = Path.Combine(folder, UpdateFeed.FeedFileName);
-            if (!File.Exists(feed) || File.ReadAllText(feed) != package.FeedJson)
-            {
-                var tmpFeed = feed + ".tmp-" + Environment.MachineName;
-                File.WriteAllText(tmpFeed, package.FeedJson);
-                File.Move(tmpFeed, feed, overwrite: true);
-            }
-
-            // Ältere selbst abgelegte Pakete wegräumen (nur .nupkg in diesem Ordner).
-            foreach (var old in Directory.EnumerateFiles(folder, "*-full.nupkg")
-                         .Where(f => !string.Equals(Path.GetFileName(f), package.FileName, StringComparison.OrdinalIgnoreCase)))
-                File.Delete(old);
+            WriteIfChanged(Path.Combine(folder, UpdateFeed.FeedFileName), package.FeedJson);
+            DeleteOldPackages(folder, package.FileName);
         }
         catch (Exception ex)
         {
             UpdateLog.Write("Ablage des Updates im Hauptordner fehlgeschlagen", ex);
         }
-        finally
+    }
+
+    private static async Task MirrorToDatabaseAsync(SharedDatabase db, FeedPackage package, string local, string localFeed)
+    {
+        try
         {
-            Interlocked.Exchange(ref _mirroring, 0);
+            var version = package.Version.ToString(3);
+            var files = await db.GetUpdateFilesAsync();
+            var known = files.FirstOrDefault(f => f.File.Equals(package.FileName, StringComparison.OrdinalIgnoreCase));
+            if (known != null && known.Version == version && files.Any(f => f.File == UpdateFeed.FeedFileName)) return;
+
+            // Nie eine neuere Version in der Datenbank durch eine ältere ersetzen (z. B. wenn GitHub kurz hinterherhinkt).
+            var newest = files.Where(f => f.File.EndsWith("-full.nupkg", StringComparison.OrdinalIgnoreCase))
+                .Select(f => Version.TryParse(f.Version, out var v) ? v : null).Max();
+            if (newest != null && newest > package.Version) return;
+
+            if (await db.PublishUpdateAsync(version, [local, localFeed]))
+                UpdateLog.Write($"Version {version} in der Datenbank abgelegt.");
+        }
+        catch (Exception ex)
+        {
+            UpdateLog.Write("Ablage des Updates in der Datenbank fehlgeschlagen", ex);
+        }
+    }
+
+    private static void WriteIfChanged(string path, string text)
+    {
+        if (File.Exists(path) && File.ReadAllText(path) == text) return;
+        var tmp = path + ".tmp-" + Environment.MachineName;
+        File.WriteAllText(tmp, text);
+        File.Move(tmp, path, overwrite: true);
+    }
+
+    /// <summary>Ältere selbst abgelegte Pakete wegräumen (nur *-full.nupkg in diesem Ordner).</summary>
+    private static void DeleteOldPackages(string folder, string keep)
+    {
+        foreach (var old in Directory.EnumerateFiles(folder, "*-full.nupkg")
+                     .Where(f => !string.Equals(Path.GetFileName(f), keep, StringComparison.OrdinalIgnoreCase)))
+        {
+            try { File.Delete(old); } catch (IOException) { }
         }
     }
 
@@ -236,7 +359,7 @@ public sealed class UpdateService
     /// Fehlertext mit allen inneren Ursachen („SSL nicht möglich → Zertifikatskette ungültig: UntrustedRoot“).
     /// Bei SSL-Fehlern steht die eigentliche Ursache fast immer erst in der inneren Exception.
     /// </summary>
-    public static string Describe(Exception ex)
+    public static string Describe(Exception ex, string target = "GitHub")
     {
         var parts = new List<string>();
         for (Exception? e = ex; e != null; e = e.InnerException)
@@ -245,7 +368,7 @@ public sealed class UpdateService
         var text = string.Join(" → ", parts);
         if (ex is System.Net.Http.HttpRequestException { InnerException: System.Security.Authentication.AuthenticationException }
             || ex.InnerException is System.Security.Authentication.AuthenticationException)
-            text += " – Die Verbindung zu GitHub wurde abgelehnt (Zertifikat, Windows-Uhrzeit, Firewall/Virenscanner prüfen).";
+            text += $" – Die Verbindung zu {target} wurde abgelehnt (Zertifikat, Windows-Uhrzeit, Firewall/Virenscanner prüfen).";
         return text;
     }
 

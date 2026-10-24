@@ -44,6 +44,9 @@ public sealed class AppPaths
     /// <summary>Statistik aller fertigen Platten (eine JSON-Zeile pro Platte, für alle Rechner gemeinsam).</summary>
     public string StatisticsFile => Path.Combine(Shared, "statistik.jsonl");
 
+    /// <summary>Gemessene Laufzeiten je Platte (für die Zeitschätzung, für alle Rechner gemeinsam).</summary>
+    public string RunTimeFile => Path.Combine(Shared, "laufzeiten.jsonl");
+
     public bool IsValid => Directory.Exists(Input) && Directory.Exists(NestResult);
 
     public string NestJobFolder(string nestJob) => Path.Combine(NestResult, nestJob);

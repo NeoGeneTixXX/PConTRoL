@@ -80,6 +80,14 @@
                 <Setter Property="CaretBrush" Value="{StaticResource Fg}" />
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             </Style>
+            <Style TargetType="PasswordBox">
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="Padding" Value="4" />
+                <Setter Property="Background" Value="#3A3A3A" />
+                <Setter Property="Foreground" Value="{StaticResource Fg}" />
+                <Setter Property="CaretBrush" Value="{StaticResource Fg}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            </Style>
             <Style TargetType="GridSplitter">
                 <Setter Property="Background" Value="#3A3A3A" />
             </Style>

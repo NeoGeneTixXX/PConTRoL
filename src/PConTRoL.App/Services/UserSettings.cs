@@ -43,6 +43,19 @@ public sealed class UserSettings
 
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Verbindung zur gemeinsamen Datenbank (Neon/PostgreSQL), per Windows-DPAPI für diesen Benutzer verschlüsselt.
+    /// Lesbar nur für diesen Windows-Benutzer auf diesem Rechner. Leer = keine Datenbank.
+    /// </summary>
+    public string DatabaseProtected { get; set; } = "";
+
+    [JsonIgnore]
+    public string DatabaseConnection
+    {
+        get => Secret.Unprotect(DatabaseProtected);
+        set => DatabaseProtected = Secret.Protect(value);
+    }
+
     public HashSet<string> CollapsedGroups { get; set; } = [];
     public Dictionary<string, List<ColumnState>> Columns { get; set; } = [];
 
@@ -122,6 +135,34 @@ public static class SettingsStore
         catch (Exception ex)
         {
             ErrorLog.Write("Einstellungen konnten nicht gespeichert werden", ex);
+        }
+    }
+}
+
+/// <summary>Kleine Geheimnisse (Datenbank-Passwort) per Windows-DPAPI, nur für den angemeldeten Benutzer lesbar.</summary>
+public static class Secret
+{
+    public static string Protect(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var data = System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(text.Trim()), null,
+            System.Security.Cryptography.DataProtectionScope.CurrentUser);
+        return Convert.ToBase64String(data);
+    }
+
+    /// <summary>Leer, wenn nichts gespeichert ist oder es nicht entschlüsselt werden kann (anderer Benutzer/Rechner).</summary>
+    public static string Unprotect(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return "";
+        try
+        {
+            var data = System.Security.Cryptography.ProtectedData.Unprotect(Convert.FromBase64String(stored), null,
+                System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            return System.Text.Encoding.UTF8.GetString(data);
+        }
+        catch (Exception ex) when (ex is FormatException or System.Security.Cryptography.CryptographicException)
+        {
+            return "";
         }
     }
 }

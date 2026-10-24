@@ -120,6 +120,27 @@
                        Text="Beim Anlegen werden die gewählten .hop-Dateien (mit .lbl und .jpg) in den Ordner Kanban im Hauptordner verschoben. Ein Klick auf die Kachel schickt Kopien als Gruppe ans Ende der Maschine – beliebig oft. Änderungen an Kacheln gelten sofort, auch ohne „Speichern“." />
         </DockPanel>
 
+        <TextBlock Text="Datenbank (Laufzeiten und Updates)" Style="{StaticResource Section}" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Verbindung" Style="{StaticResource Label}" />
+            <PasswordBox x:Name="DatabaseBox" Grid.Column="1" FontSize="14" Padding="4,3" VerticalContentAlignment="Center"
+                         PasswordChanged="OnDatabaseChanged" />
+            <Button Grid.Column="2" Content="Testen" Click="OnTestDatabase" Padding="12,4" Margin="6,0,0,0" />
+            <TextBlock x:Name="DatabaseStatus" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" FontSize="13"
+                       Foreground="{StaticResource FgDim}" TextWrapping="Wrap" Margin="0,2,0,0" />
+        </Grid>
+        <TextBlock FontSize="13" Foreground="{StaticResource FgDim}" Margin="140,4,0,0" TextWrapping="Wrap"
+                   Text="Die Verbindungszeichenfolge von Neon einfügen (postgresql://…), dieselbe Datenbank wie beim CSV-NaViGaTOR. Sie wird verschlüsselt nur für diesen Windows-Benutzer gespeichert. Darüber teilen alle Rechner die gemessenen Laufzeiten und holen Updates, auch wenn GitHub nicht erreichbar ist. Leer = ohne Datenbank; die Zeitschätzung läuft dann nur über den Hauptordner." />
+
         <TextBlock Text="Programm" Style="{StaticResource Section}" />
         <CheckBox x:Name="AutostartBox" Content="Mit Windows starten (im Tray)" />
         <Grid Margin="0,10,0,0">

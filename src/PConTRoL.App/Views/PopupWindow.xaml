@@ -2,45 +2,112 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PConTRoL – Maschine"
-        Width="480" SizeToContent="Height"
+        Width="340" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False">
-    <Border x:Name="Root" CornerRadius="10" Padding="16,12,16,14" BorderThickness="2">
+    <Window.Resources>
+        <!-- Farben setzt ApplyLook (Einstellungen → Pop-up) -->
+        <SolidColorBrush x:Key="PopupFg" Color="#F0F0F0" />
+        <SolidColorBrush x:Key="PopupAccent" Color="#F2C230" />
+        <SolidColorBrush x:Key="PopupLine" Color="#3C3C3C" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="HeaderButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PopupFg}" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinWidth" Value="26" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="Root" CornerRadius="10" Padding="12,8,8,10" BorderThickness="2">
         <StackPanel>
             <DockPanel x:Name="Header" Background="Transparent" Cursor="SizeAll" Margin="0,0,0,6">
-                <Button DockPanel.Dock="Right" Content="✕" Click="OnClose" Padding="8,2" FontSize="14" Margin="0"
-                        Background="Transparent" BorderBrush="Transparent" ToolTip="Schließen" />
-                <Button DockPanel.Dock="Right" Content="Hauptfenster" Click="OnOpenMain" Padding="8,2" FontSize="13" Margin="0,0,6,0"
-                        Background="Transparent" />
-                <TextBlock x:Name="HeaderText" Text="PConTRoL – an der Maschine" FontSize="14" VerticalAlignment="Center" Opacity="0.8" />
+                <Button DockPanel.Dock="Right" Content="✕" Click="OnClose" Style="{StaticResource HeaderButton}" ToolTip="Schließen" />
+                <Button DockPanel.Dock="Right" Content="▣" Click="OnOpenMain" Style="{StaticResource HeaderButton}" ToolTip="Hauptfenster öffnen" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding HeaderInfo}" FontSize="12" Opacity="0.75" VerticalAlignment="Center"
+                           Margin="8,0,6,0" Foreground="{DynamicResource PopupFg}" />
+                <TextBlock Text="Maschine · heute" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
+                           Foreground="{DynamicResource PopupFg}" />
             </DockPanel>
 
-            <TextBlock x:Name="RunningLabel" Text="LÄUFT GERADE" FontSize="13" FontWeight="Bold" />
-            <TextBlock x:Name="CurrentName" Text="{Binding CurrentName}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap" Margin="0,2,0,0" />
-            <TextBlock x:Name="CurrentInfo" Text="{Binding CurrentInfo}" FontSize="15" Opacity="0.85" TextWrapping="Wrap" Margin="0,2,0,10" />
+            <TextBlock Text="{Binding Message}" FontSize="15" TextWrapping="Wrap" Margin="0,2,4,2" Foreground="{DynamicResource PopupFg}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
 
-            <TextBlock x:Name="NextLabel" Text="ALS NÄCHSTES" FontSize="13" FontWeight="Bold" Margin="0,0,0,4" />
-            <ItemsControl x:Name="NextList" ItemsSource="{Binding Next}">
+            <ItemsControl ItemsSource="{Binding Entries}" Margin="0,0,4,0">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="0,2">
+                        <Grid ToolTip="{Binding ToolTip}" Background="Transparent">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="34" />
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="14" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding Position}" FontSize="16" FontWeight="Bold" Opacity="0.7"
-                                       Foreground="{Binding Foreground, ElementName=CurrentName}" />
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding Name}" FontSize="16" TextTrimming="CharacterEllipsis"
-                                           Foreground="{Binding Foreground, ElementName=CurrentName}" />
-                                <TextBlock Text="{Binding Info}" FontSize="13" Opacity="0.7"
-                                           Foreground="{Binding Foreground, ElementName=CurrentName}" />
+                            <TextBlock x:Name="TimeText" Text="{Binding Time}" FontSize="13" Margin="0,1,0,0" Opacity="0.75"
+                                       Foreground="{DynamicResource PopupFg}" />
+
+                            <!-- Punkt und senkrechte Linie zum nächsten Auftrag -->
+                            <Grid Grid.Column="1">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Ellipse x:Name="Dot" Width="10" Height="10" Margin="0,5,0,0" StrokeThickness="2"
+                                         Stroke="{DynamicResource PopupFg}" Opacity="0.6" HorizontalAlignment="Center" />
+                                <Rectangle x:Name="Line" Grid.Row="1" Width="2" Fill="{DynamicResource PopupLine}" HorizontalAlignment="Center"
+                                           Visibility="{Binding HasLine, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+
+                            <StackPanel Grid.Column="2" Margin="6,0,0,9">
+                                <TextBlock x:Name="NameText" Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource PopupFg}" />
+                                <TextBlock Text="{Binding Info}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource PopupFg}" />
                             </StackPanel>
                         </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource PopupAccent}" />
+                                <Setter TargetName="Dot" Property="Stroke" Value="{DynamicResource PopupAccent}" />
+                                <Setter TargetName="Dot" Property="Opacity" Value="1" />
+                                <Setter TargetName="Dot" Property="Width" Value="12" />
+                                <Setter TargetName="Dot" Property="Height" Value="12" />
+                                <Setter TargetName="Dot" Property="Margin" Value="0,4,0,0" />
+                                <Setter TargetName="Line" Property="Fill" Value="{DynamicResource PopupAccent}" />
+                                <Setter TargetName="TimeText" Property="Foreground" Value="{DynamicResource PopupAccent}" />
+                                <Setter TargetName="TimeText" Property="FontWeight" Value="Bold" />
+                                <Setter TargetName="TimeText" Property="Opacity" Value="1" />
+                                <Setter TargetName="NameText" Property="FontWeight" Value="Bold" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock x:Name="Footer" Text="{Binding Footer}" FontSize="14" Opacity="0.7" Margin="34,4,0,0" />
+
+            <TextBlock Text="{Binding Footer}" FontSize="12" Opacity="0.7" Margin="0,0,4,0" Foreground="{DynamicResource PopupFg}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
         </StackPanel>
     </Border>
 </Window>

@@ -15,6 +15,7 @@ public partial class App : Application
     private MainWindow? _main;
     private PopupWindow? _popup;
     private UpdateService? _updates;
+    private DatabaseService? _database;
     private bool _balloonShown;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -64,8 +65,12 @@ public partial class App : Application
         _tray.Exit += (_, _) => ExitApp();
         status.PropertyChanged += (_, _) => _tray.SetToolTip("PConTRoL – läuft: " + status.CurrentName);
 
+        _database = new DatabaseService(() => _main?.RunTimes);
+        _database.Configure(settings.DatabaseConnection);
+        _main.Database = _database;
+
         // Vor dem ersten Öffnen der Einstellungen, damit dort „Nach Updates suchen“ schon funktioniert.
-        _updates = new UpdateService(() => _main?.Settings.MainFolder);
+        _updates = new UpdateService(() => _main?.Settings.MainFolder, () => _database.Current);
         _updates.UpdateReady += (_, asset) =>
         {
             var version = asset.Version.ToString();
@@ -86,6 +91,7 @@ public partial class App : Application
         }
 
         _updates.Start();
+        _database.Start();
     }
 
     /// <summary>

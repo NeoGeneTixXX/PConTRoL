@@ -5,6 +5,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using PConTRoL.App.Services;
 using PConTRoL.Core;
+using PConTRoL.Core.Database;
 
 namespace PConTRoL.App.Views;
 
@@ -17,13 +18,15 @@ public partial class SettingsWindow : Window
     private readonly bool _popupWasVisible;
     private readonly UpdateService? _updates;
     private readonly QueueController? _controller;
+    private readonly DatabaseService? _database;
     private bool _loading = true;
 
     /// <param name="previewMainScale">Vorschau der Größe im Hauptfenster; null = gespeicherten Wert wiederherstellen.</param>
     /// <param name="updates">Für „Nach Updates suchen“; null = nicht verfügbar.</param>
     /// <param name="controller">Für die Kanban-Kacheln (gespeicherter Hauptordner); null = kein Hauptordner.</param>
+    /// <param name="database">Für den Stand der Datenbank; null = nicht verfügbar.</param>
     public SettingsWindow(UserSettings current, PopupWindow popup, Action<double?> previewMainScale,
-        UpdateService? updates = null, QueueController? controller = null)
+        UpdateService? updates = null, QueueController? controller = null, DatabaseService? database = null)
     {
         InitializeComponent();
         _original = current.Clone();
@@ -32,6 +35,7 @@ public partial class SettingsWindow : Window
         _previewMainScale = previewMainScale;
         _updates = updates;
         _controller = controller;
+        _database = database;
         _popupWasVisible = popup.IsVisible;
         ShowUpdateState();
         BuildKanbanRows();
@@ -42,6 +46,8 @@ public partial class SettingsWindow : Window
         OpacitySlider.Value = Math.Round(_edit.PopupOpacity * 100);
         TopmostBox.IsChecked = _edit.PopupTopmost;
         AutostartBox.IsChecked = _edit.StartWithWindows;
+        DatabaseBox.Password = _edit.DatabaseConnection;
+        ShowDatabaseState();
         _edit.PartColumns = PartColumnCatalog.Normalize(_edit.PartColumns);
         BuildPartColumnRows();
         UpdateSwatches();
@@ -485,9 +491,60 @@ public partial class SettingsWindow : Window
         if (dlg.ShowDialog(this) == true) box.Text = dlg.FolderName;
     }
 
+    private void ShowDatabaseState()
+    {
+        var text = DatabaseBox.Password;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            DatabaseStatus.Text = "Keine Datenbank eingerichtet.";
+            return;
+        }
+        var error = DatabaseConnection.TryBuild(text, out _);
+        DatabaseStatus.Text = error ?? DatabaseConnection.Describe(text)
+            + (text == _original.DatabaseConnection && _database != null ? "  ·  " + _database.StatusText : "  ·  noch nicht gespeichert");
+    }
+
+    private void OnDatabaseChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loading) ShowDatabaseState();
+    }
+
+    private async void OnTestDatabase(object sender, RoutedEventArgs e)
+    {
+        var error = DatabaseConnection.TryBuild(DatabaseBox.Password, out var cs);
+        if (error != null)
+        {
+            DatabaseStatus.Text = error;
+            return;
+        }
+        var button = (Button)sender;
+        button.IsEnabled = false;
+        DatabaseStatus.Text = "Verbinde …";
+        try
+        {
+            var count = await Task.Run(() => new SharedDatabase(cs).TestAsync());
+            DatabaseStatus.Text = $"Verbindung klappt: {DatabaseConnection.Describe(DatabaseBox.Password)}  ·  {count} Laufzeiten gespeichert";
+        }
+        catch (Exception ex)
+        {
+            DatabaseStatus.Text = "Keine Verbindung: " + UpdateService.Describe(ex, "der Datenbank");
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
     private void OnSave(object sender, RoutedEventArgs e)
     {
         _edit.MainFolder = MainFolderBox.Text.Trim();
+        var dbError = DatabaseBox.Password.Trim().Length > 0 ? DatabaseConnection.TryBuild(DatabaseBox.Password, out _) : null;
+        if (dbError != null)
+        {
+            MessageBox.Show(this, dbError, "Datenbank", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        _edit.DatabaseConnection = DatabaseBox.Password;
         _edit.StartWithWindows = AutostartBox.IsChecked == true;
         _edit.PartColumns = PartColumnCatalog.Normalize(_edit.PartColumns);
         Preview();

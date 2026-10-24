@@ -7,7 +7,7 @@ using PConTRoL.App.ViewModels;
 
 namespace PConTRoL.App.Views;
 
-/// <summary>Kleines Fenster unten rechts: laufender Auftrag + die nächsten 10.</summary>
+/// <summary>Kleines Fenster unten rechts: Zeitleiste mit laufendem Auftrag, den nächsten und wann sie dran sind.</summary>
 public partial class PopupWindow : Window
 {
     private bool _userMoved;
@@ -39,17 +39,17 @@ public partial class PopupWindow : Window
         Opacity = Math.Clamp(s.PopupOpacity, 0.3, 1.0);
         Topmost = s.PopupTopmost;
 
-        foreach (var tb in new[] { HeaderText, CurrentName, CurrentInfo, Footer }) tb.Foreground = fg;
-        RunningLabel.Foreground = accent;
-        NextLabel.Foreground = accent;
-        foreach (var b in Header.Children.OfType<Button>()) b.Foreground = fg;
+        // Die Zeitleiste holt ihre Farben über DynamicResource.
+        Resources["PopupFg"] = fg;
+        Resources["PopupAccent"] = accent;
+        Resources["PopupLine"] = new SolidColorBrush(Color.FromArgb(0x50, fg.Color.R, fg.Color.G, fg.Color.B));
 
         var scale = UserSettings.ClampScale(s.PopupScale);
         Root.LayoutTransform = Math.Abs(scale - 1) < 0.001 ? Transform.Identity : new ScaleTransform(scale, scale);
         Width = BaseWidth * scale;
     }
 
-    private const double BaseWidth = 480;
+    private const double BaseWidth = 340;
 
     public void ShowAtCorner()
     {

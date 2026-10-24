@@ -4,6 +4,7 @@ using PConTRoL.Core.Logging;
 using PConTRoL.Core.Ordering;
 using PConTRoL.Core.Scanning;
 using PConTRoL.Core.Statistics;
+using PConTRoL.Core.Timing;
 
 namespace PConTRoL.Core;
 
@@ -26,6 +27,9 @@ public sealed class QueueSnapshot
     public IReadOnlyList<Kanban.KanbanTile> KanbanTiles { get; init; } = [];
 
     public string? RunningKey => Scan.RunningKey;
+
+    /// <summary>Seit wann der laufende Auftrag läuft (UTC; null = unbekannt, z. B. lief er schon beim Programmstart).</summary>
+    public DateTime? RunningSinceUtc { get; init; }
 
     public IReadOnlyDictionary<string, JobInfo> StockByKey =>
         _stock ??= Scan.Stock.GroupBy(j => j.Key, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
@@ -55,12 +59,15 @@ public sealed partial class QueueController
     private readonly LayoutStore _store;
     private readonly StatisticsStore? _statistics;
     private readonly FinishedJobTracker _finished = new();
+    private readonly RunTimeStore? _runTimes;
+    private readonly RunTimeTracker _runTracker = new();
     private LayoutDocument? _doc;
 
     public QueueController(AppPaths paths, ActionLog log, RetryPolicy? retry = null, Func<DateTime>? utcNow = null,
-        MachineSortOrder sortOrder = MachineConfig.SortOrder, StatisticsStore? statistics = null)
+        MachineSortOrder sortOrder = MachineConfig.SortOrder, StatisticsStore? statistics = null, RunTimeStore? runTimes = null)
     {
         _statistics = statistics;
+        _runTimes = runTimes;
         _paths = paths;
         _log = log;
         _retry = retry ?? RetryPolicy.Default;
@@ -214,13 +221,18 @@ public sealed partial class QueueController
         if (_doc == null || _store.HasChangedOnDisk())
             _doc = _store.Load();
         LayoutOps.Reconcile(_doc, scan);
-        return new QueueSnapshot { Scan = scan, Layout = _doc.Clone(), Time = DateTime.Now, KanbanTiles = LoadKanbanTiles() };
+        return new QueueSnapshot
+        {
+            Scan = scan, Layout = _doc.Clone(), Time = DateTime.Now, KanbanTiles = LoadKanbanTiles(),
+            RunningSinceUtc = _runTracker.RunningSinceUtc,
+        };
     }
 
     /// <summary>Von der Maschine fertig bearbeitete Platten in die Statistik schreiben. Fehler stören den Betrieb nie.</summary>
     private void RecordFinished(ScanResult scan)
     {
         var finished = _finished.Update(scan);
+        RecordRunTimes(scan, finished);
         if (_statistics == null) return;
         foreach (var job in finished)
         {
@@ -234,6 +246,26 @@ public sealed partial class QueueController
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 _log.Write("FEHLER", job.Key, "Statistik nicht gespeichert: " + ex.Message);
+            }
+        }
+    }
+
+    /// <summary>Wie lange die fertigen Platten gebraucht haben (für die Zeitschätzung). Fehler stören den Betrieb nie.</summary>
+    private void RecordRunTimes(ScanResult scan, IReadOnlyList<JobInfo> finished)
+    {
+        var records = _runTracker.Update(scan, finished, _utcNow());
+        if (_runTimes == null) return;
+        foreach (var record in records)
+        {
+            try
+            {
+                if (_runTimes.Add(record))
+                    _log.Write("LAUFZEIT", record.File,
+                        $"{(int)record.Duration.TotalMinutes} min {record.Duration.Seconds:00} s für {record.Material}, {record.DimX:0}×{record.DimY:0}, {record.Parts} Teile");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.Write("FEHLER", record.File, "Laufzeit nicht gespeichert: " + ex.Message);
             }
         }
     }

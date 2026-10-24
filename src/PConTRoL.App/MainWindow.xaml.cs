@@ -15,6 +15,7 @@ using PConTRoL.Core.Automation;
 using PConTRoL.Core.Layout;
 using PConTRoL.Core.Logging;
 using PConTRoL.Core.Statistics;
+using PConTRoL.Core.Timing;
 
 namespace PConTRoL.App;
 
@@ -33,6 +34,9 @@ public partial class MainWindow : Window, IJobListHost
     private UserSettings _settings;
     private QueueController? _controller;
     private StatisticsStore? _statistics;
+    private RunTimeStore? _runTimes;
+    private RunTimeEstimator? _estimator;
+    private IReadOnlyList<RunTimeRecord>? _estimatorSource;
     private QueueSnapshot? _snapshot;
     private string? _error;
     private bool _refreshing;
@@ -96,6 +100,12 @@ public partial class MainWindow : Window, IJobListHost
     /// <summary>Für „Nach Updates suchen“ in den Einstellungen (von App gesetzt).</summary>
     public UpdateService? Updates { get; set; }
 
+    /// <summary>Gemeinsame Datenbank für Laufzeiten und Updates (von App gesetzt).</summary>
+    public DatabaseService? Database { get; set; }
+
+    /// <summary>Gemessene Laufzeiten im Hauptordner (null = kein Hauptordner).</summary>
+    public RunTimeStore? RunTimes => _runTimes;
+
     // ---------- Update-Hinweis ----------
 
     public void ShowUpdateAvailable(string version, string? notes)
@@ -128,13 +138,15 @@ public partial class MainWindow : Window, IJobListHost
         {
             _controller = null;
             _statistics = null;
+            _runTimes = null;
             Render();
             return;
         }
 
         var paths = new AppPaths(root);
         _statistics = new StatisticsStore(paths.StatisticsFile);
-        _controller = new QueueController(paths, new ActionLog(paths.LogFolder), statistics: _statistics);
+        _runTimes = new RunTimeStore(paths.RunTimeFile);
+        _controller = new QueueController(paths, new ActionLog(paths.LogFolder), statistics: _statistics, runTimes: _runTimes);
         StartWatchers(paths);
         _ = RefreshNow();
     }
@@ -300,8 +312,28 @@ public partial class MainWindow : Window, IJobListHost
         var running = snap.RunningKey != null ? $"   ·   Läuft: {snap.RunningKey}" : "";
         StatusText.Text = $"Stand {snap.Time:HH:mm:ss}   ·   wird alle {RefreshInterval.TotalSeconds:0} s aktualisiert{running}";
         StatusText.Foreground = (Brush)FindResource("FgDim");
-        Status.Update(snap.Scan.Machine, null);
+        Status.Update(snap.Scan.Machine, null, Forecast(snap));
         UpdateDetails();
+    }
+
+    /// <summary>Wann welcher Auftrag an der Maschine dran ist, geschätzt aus den gemessenen Laufzeiten.</summary>
+    private IReadOnlyList<ForecastEntry>? Forecast(QueueSnapshot snap)
+    {
+        if (_runTimes == null) return null;
+        try
+        {
+            var records = _runTimes.Load(); // gleiche Liste, solange die Datei nicht wächst
+            if (_estimator == null || !ReferenceEquals(records, _estimatorSource))
+            {
+                _estimator = new RunTimeEstimator(records);
+                _estimatorSource = records;
+            }
+            return QueueForecast.Build(snap.Scan.Machine, _estimator, snap.RunningSinceUtc, DateTime.UtcNow);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static string Plural(int n) => n == 1 ? "1 Platte" : $"{n} Platten";
@@ -768,7 +800,7 @@ public partial class MainWindow : Window, IJobListHost
     public void OpenSettings()
     {
         CaptureLayout();
-        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates, _controller);
+        var dlg = new SettingsWindow(_settings, Popup, ApplyScale, Updates, _controller, Database);
         if (IsVisible) dlg.Owner = this;
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var saved = dlg.ShowDialog() == true;
@@ -785,6 +817,7 @@ public partial class MainWindow : Window, IJobListHost
 
         var rootChanged = !string.Equals(dlg.Result.MainFolder, _settings.MainFolder, StringComparison.OrdinalIgnoreCase);
         var autostartChanged = dlg.Result.StartWithWindows != _settings.StartWithWindows;
+        var databaseChanged = dlg.Result.DatabaseProtected != _settings.DatabaseProtected;
         _settings = dlg.Result;
         if (autostartChanged) Autostart.Apply(_settings.StartWithWindows);
         SettingsStore.Save(_settings);
@@ -793,6 +826,8 @@ public partial class MainWindow : Window, IJobListHost
         ApplyPartColumns();
         UpdateDetails(); // Zusammenfassen hängt von den sichtbaren Spalten ab
         if (rootChanged) ApplyRoot();
+        if (databaseChanged) Database?.Configure(_settings.DatabaseConnection);
+        if (databaseChanged || rootChanged) _ = Database?.SyncNowAsync();
 
         // „Jetzt installieren“ in den Einstellungen: erst speichern (oben), dann wie der Update-Hinweis.
         if (dlg.InstallUpdateRequested) UpdateRequested?.Invoke(this, EventArgs.Empty);
